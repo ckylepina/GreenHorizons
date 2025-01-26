@@ -11,7 +11,7 @@ const Footer = () => {
           className="font-bold hover:underline"
           rel="noreferrer"
         >
-          Supabases
+          Supabase
         </a>
       </p>
       <ThemeSwitcher />
