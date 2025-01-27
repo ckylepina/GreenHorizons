@@ -5,14 +5,14 @@ import { ArrowUpRight } from "lucide-react";
 export default function SignUpUserSteps() {
   return (
     <ol className="flex flex-col gap-6">
-      {process.env.VERCEL_ENV === "preview" ||
-      process.env.VERCEL_ENV === "production" ? (
+      {(process.env.VERCEL_ENV === "preview" ||
+        process.env.VERCEL_ENV === "production") && (
         <TutorialStep title="Set up redirect urls">
           <p>It looks like this App is hosted on Vercel.</p>
           <p className="mt-4">
             This particular deployment is
             <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
-              "{process.env.VERCEL_ENV}"
+              &quot;{process.env.VERCEL_ENV}&quot;
             </span>{" "}
             on
             <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
@@ -48,7 +48,10 @@ export default function SignUpUserSteps() {
             <li>
               -{" "}
               <span className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-xs font-medium text-secondary-foreground border">
-                {`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL?.replace(".vercel.app", "")}-*-[vercel-team-url].vercel.app/**`}
+                {`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL?.replace(
+                  ".vercel.app",
+                  ""
+                )}-*-[vercel-team-url].vercel.app/**`}
               </span>{" "}
               (Vercel Team URL can be found in{" "}
               <Link
@@ -69,7 +72,7 @@ export default function SignUpUserSteps() {
             Redirect URLs Docs <ArrowUpRight size={14} />
           </Link>
         </TutorialStep>
-      ) : null}
+      )}
       <TutorialStep title="Sign up your first user">
         <p>
           Head over to the{" "}
@@ -79,8 +82,8 @@ export default function SignUpUserSteps() {
           >
             Sign up
           </Link>{" "}
-          page and sign up your first user. It's okay if this is just you for
-          now. Your awesome idea will have plenty of users later!
+          page and sign up your first user. It&apos;s okay if this is just you for
+          now. Your awesome idea will have plenty of users later! {/* Line 82:47 */}
         </p>
       </TutorialStep>
     </ol>
