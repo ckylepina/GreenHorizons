@@ -1,4 +1,3 @@
-import DeployButton from "@/components/deploy-button";
 import { EnvVarWarning } from "@/components/env-var-warning";
 import HeaderAuth from "@/components/header-auth";
 import Link from "next/link";
@@ -15,13 +14,12 @@ const Header = () => {
         href="/"
         target="_blank"
       >
-        <Button className="flex items-center gap-2" size={"sm"}>
-          <Image src="/greenhorizonsicon.png" alt="Green Horizons Icon" width={150} height={150} unoptimized/>
+        <Button className="flex items-center gap-2 bg-white" size={"sm"}>
+          <Image className="bg-white" src="/greenhorizonsicon.png" alt="Green Horizons Icon" width={150} height={150} unoptimized/>
           <span></span>
         </Button>
       </Link>
           <div className="flex items-center gap-2">
-            <DeployButton />
           </div>
         </div>
         {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuth />}

@@ -8,25 +8,35 @@ import { redirect } from "next/navigation";
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
+  const firstName = formData.get("first_name")?.toString(); // Getting first_name from the form
+  const lastName = formData.get("last_name")?.toString();   // Getting last_name from the form
+
   const supabase = await createClient();
   const origin = (await headers()).get("origin");
 
-  if (!email || !password) {
+  // Check if all fields are provided
+  if (!email || !password || !firstName || !lastName) {
     return encodedRedirect(
       "error",
       "/sign-up",
-      "Email and password are required",
+      "Email, password, first name, and last name are required",
     );
   }
 
+  // Sign up the user and insert additional information into the profiles table
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       emailRedirectTo: `${origin}/auth/callback`,
+      data: {
+        first_name: firstName,  // Pass the first_name to Supabase
+        last_name: lastName,    // Pass the last_name to Supabase
+      },
     },
   });
 
+  // Handle errors or successful sign-up
   if (error) {
     console.error(error.code + " " + error.message);
     return encodedRedirect("error", "/sign-up", error.message);
@@ -38,6 +48,7 @@ export const signUpAction = async (formData: FormData) => {
     );
   }
 };
+
 
 export const signInAction = async (formData: FormData) => {
   const email = formData.get("email") as string;
@@ -53,7 +64,7 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", "/sign-in", error.message);
   }
 
-  return redirect("/protected");
+  return redirect("/");
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {
@@ -131,4 +142,35 @@ export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
   return redirect("/sign-in");
+};
+
+export const resendSignupConfirmationAction = async (formData: FormData) => {
+  const email = formData.get("email")?.toString();
+  const supabase = await createClient();
+  const origin = (await headers()).get("origin");
+
+  if (!email) {
+    return encodedRedirect("error", "/resend-confirmation", "Email is required");
+  }
+
+  // Attempt to resend the confirmation
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      // You can set this to `https://example.com/welcome` or build it dynamically:
+      emailRedirectTo: `${origin}/welcome`,
+    },
+  });
+
+  if (error) {
+    console.error(error.message);
+    return encodedRedirect("error", "/resend-confirmation", error.message);
+  }
+
+  return encodedRedirect(
+    "success",
+    "/resend-confirmation",
+    "Confirmation link resent! Check your email."
+  );
 };
