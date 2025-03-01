@@ -157,11 +157,13 @@ export default async function HomePage() {
       />
     );
   } else if (role === 'sales') {
+    type SaleWithDeal = SalesData & { deal?: unknown };
     const rawSalesData = await getSales(supabase, {});
-    // If you need to remove the 'deal' property, you can do it like this:
-    const salesData: SalesData[] = rawSalesData.map((sale) => {
-      const { deal, ...rest } = sale as any; // If 'deal' is present, remove it.
-      return rest as SalesData;
+    // Create a copy of each sale, remove the 'deal' property, and return the clean object.
+    const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
+      const saleCopy = { ...sale };
+      delete saleCopy.deal;
+      return saleCopy;
     });
     return <SalesDashboard user={user} employee={employee} salesData={salesData} />;
   } else if (role === 'seller') {

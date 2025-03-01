@@ -53,7 +53,7 @@ export default function PendingRoleRequestsClient({
         input_tenant_id: tenantId,
       };
 
-      const { data, error } = await supabase.rpc('accept_role_request', requestData);
+      const { error } = await supabase.rpc('accept_role_request', requestData);
       if (error) {
         console.error('Error approving role request:', error);
         setMessage('Error approving role request.');

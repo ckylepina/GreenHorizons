@@ -46,7 +46,7 @@ interface InsertedGroupsListProps {
   loading: boolean;
   bulkEditMode: boolean;
   bulkEditGroupId: string | null;
-  onReprintGroup: (groupId: string) => void;
+  // Removed onReprintGroup since it's not used.
   onStartBulkEdit: (groupId: string) => void;
   onCancelBulkEdit: () => void;
   onApplyBulkEdit: (fields: Partial<BagRecord>) => Promise<void>;
@@ -61,7 +61,6 @@ export default function InsertedGroupsList({
   loading,
   bulkEditMode,
   bulkEditGroupId,
-  onReprintGroup,
   onStartBulkEdit,
   onCancelBulkEdit,
   onApplyBulkEdit,

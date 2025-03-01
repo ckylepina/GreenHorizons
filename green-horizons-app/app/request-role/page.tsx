@@ -40,7 +40,6 @@ export default async function RequestRolePage() {
 
   return (
     <RequestRoleClientComponent
-      user={user}
       roles={roles}
       profile={profile}
       isPending={isPending ?? false}

@@ -4,7 +4,6 @@ import { Database } from '@/database.types';
 // Extend the generated type if needed.
 export type BagRecord = Database['public']['Tables']['bags']['Row'] & {
   // Optionally override or add fields if needed.
-  // For example, if you need to guarantee that these fields are never null:
   id: string;
   current_status: string | null;
   harvest_room_id: string | null;
@@ -14,6 +13,25 @@ export type BagRecord = Database['public']['Tables']['bags']['Row'] & {
   weight: number;
   qr_code?: string;
 };
+
+// Type for grouping scanned bags.
+export interface BagGroup {
+  key: string;
+  harvest_room_id: string | null;
+  strain_id: string | null;
+  size_category_id: string | null;
+  weight: number;
+  bags: BagRecord[];
+}
+
+// Full Customer interface.
+export interface Customer {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  // Add additional customer fields if needed.
+}
 
 // Other interfaces remain unchanged.
 export interface Strain {

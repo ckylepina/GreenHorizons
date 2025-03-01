@@ -1021,6 +1021,19 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_customer: {
+        Args: {
+          p_first_name: string
+          p_last_name: string
+          p_business_name: string
+          p_license_number: string
+          p_email: string
+          p_phone: string
+        }
+        Returns: {
+          id: string
+        }[]
+      }
       create_reserve_request: {
         Args: {
           p_employee_id: string

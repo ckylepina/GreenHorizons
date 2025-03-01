@@ -1,7 +1,8 @@
+// BagInsertForm.tsx
 'use client';
 
 import React, { useState } from 'react';
-import { Strain, BagSize, HarvestRoom, FormData, BagRecord, InsertedGroup } from './types';
+import { BagRecord, Strain, BagSize, HarvestRoom, FormData } from './types';
 
 interface BagInsertFormProps {
   serverStrains: Strain[];
@@ -12,8 +13,6 @@ interface BagInsertFormProps {
   tenantId: string;
   loading: boolean;
   onInsertNewGroup: (bags: BagRecord[]) => Promise<void>;
-  messages: { type: 'error' | 'success'; text: string }[];
-  setMessages: React.Dispatch<React.SetStateAction<{ type: 'error' | 'success'; text: string }[]>>;
 }
 
 export default function BagInsertForm({
@@ -24,8 +23,6 @@ export default function BagInsertForm({
   tenantId,
   loading,
   onInsertNewGroup,
-  messages,
-  setMessages,
 }: BagInsertFormProps) {
   // Form data for inserting bags
   const [formData, setFormData] = useState<FormData>({
@@ -36,7 +33,7 @@ export default function BagInsertForm({
     num_bags: 1,
   });
 
-  // Prepare harvest rooms (reversed order)
+  // Prepare harvest rooms in reversed order
   const reversedRooms = [...serverHarvestRooms].reverse();
   const [filteredRooms, setFilteredRooms] = useState<HarvestRoom[]>(reversedRooms);
 
@@ -47,7 +44,7 @@ export default function BagInsertForm({
       [name]: name === 'num_bags' ? parseInt(value, 10) : value,
     }));
 
-    // If strain changes, reset harvest_room & re-filter
+    // If strain changes, reset harvest_room and re-filter
     if (name === 'strain_id') {
       setFormData((prev) => ({ ...prev, harvest_room_id: '' }));
       const strain = serverStrains.find((s) => s.id === value);
@@ -62,25 +59,21 @@ export default function BagInsertForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMessages([]);
-  
+
     const { strain_id, size_category_id, harvest_room_id, weight, num_bags } = formData;
     if (!strain_id || !size_category_id || !harvest_room_id || weight <= 0 || num_bags < 1) {
-      setMessages([{ type: 'error', text: 'Please fill all fields with valid values (weight must be positive).' }]);
+      // Validation: ensure all fields have valid values.
       return;
     }
 
-    const room = reversedRooms.find((r) => r.id === harvest_room_id);
-    // For display purposes, we might use the room name (e.g., "H1")
-    const roomName = room ? room.name : 'Unknown';
+    // Removed roomName variable since it was not used.
     const uniqueTime = Date.now();
 
-    // Build BagRecord objects that match your bags table.
-    // Generate a unique bag ID on the client using crypto.randomUUID().
+    // Build BagRecord objects.
     const newBagsData: BagRecord[] = Array.from({ length: num_bags }, (_, idx) => {
-      const bagId = crypto.randomUUID(); // Generate a unique ID
+      const bagId = crypto.randomUUID(); // Generate a unique ID.
       const uniqueSuffix = `-${uniqueTime}-${Math.floor(Math.random() * 100000)}`;
-      // Prepare a QR data string that includes the bag's id along with other data.
+      // Prepare a QR data string that includes bag details.
       const qrData = JSON.stringify({
         id: bagId,
         strain_id,
@@ -101,7 +94,7 @@ export default function BagInsertForm({
         weight: parseFloat(weight.toString()),
         current_status: 'in_inventory',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(), // Added updated_at field
+        updated_at: new Date().toISOString(), // Added updated_at field.
         qr_code: qrData,
       };
     });
@@ -109,21 +102,7 @@ export default function BagInsertForm({
     // Call the parent insert function with the new bag records.
     await onInsertNewGroup(newBagsData);
 
-    // Create a new group record.
-    // Compute bagIds and qrCodes arrays from the inserted data.
-    const bagCount = newBagsData.length;
-    const newGroupId = `group-${Date.now()}`;
-    const group: InsertedGroup = {
-      groupId: newGroupId,
-      bags: newBagsData, // Full bag objects
-      bagCount,
-      insertedAt: new Date().toLocaleString(),
-      bagIds: newBagsData.map((bag) => bag.id), // New property
-      qrCodes: newBagsData.map((bag) => bag.qr_code || ''), // New property
-    };
-
-    // You might then update your state that stores inserted groups, etc.
-    // (Assuming that state is managed in a parent component or via context.)
+    // Removed the group creation logic since the group record wasn't used further.
   }
 
   return (
@@ -225,7 +204,6 @@ export default function BagInsertForm({
         />
       </label>
 
-      {/* Submit */}
       <button
         type="submit"
         className="bg-blue-600 text-white px-4 py-2 rounded mt-2"

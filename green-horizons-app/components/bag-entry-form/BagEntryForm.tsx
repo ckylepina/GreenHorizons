@@ -1,17 +1,11 @@
+// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
-import { 
-  Strain, 
-  BagSize, 
-  HarvestRoom, 
-  FormData, 
-  InsertedGroup, 
-  BagRecord 
-} from './types';
+import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
 interface BagEntryFormProps {
   serverStrains: Strain[];
@@ -65,7 +59,6 @@ export default function BagEntryForm({
         // Create a new group record.
         // IMPORTANT: Store the full inserted bag records in the new group,
         // so that LabelsToPrint can access all the fields (including harvest_room_id)
-        
         const newGroupId = `group-${Date.now()}`;
         const group: InsertedGroup = {
           groupId: newGroupId,
@@ -129,11 +122,7 @@ export default function BagEntryForm({
   // ---------------------------------------
   // 3) Handlers
   // ---------------------------------------
-  function handleReprintGroup(groupId: string) {
-    console.log('Reprinting all QR codes for group:', groupId);
-    window.print();
-  }
-
+  // Removed handleReprintGroup as it was not used.
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
@@ -159,8 +148,6 @@ export default function BagEntryForm({
         tenantId={tenantId}
         loading={loading}
         onInsertNewGroup={insertNewGroup}
-        messages={messages}
-        setMessages={setMessages}
       />
 
       <InsertedGroupsList
@@ -168,7 +155,6 @@ export default function BagEntryForm({
         loading={loading}
         bulkEditMode={bulkEditMode}
         bulkEditGroupId={bulkEditGroupId}
-        onReprintGroup={handleReprintGroup}
         onStartBulkEdit={startBulkEdit}
         onCancelBulkEdit={cancelBulkEdit}
         onApplyBulkEdit={applyBulkEdit}

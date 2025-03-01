@@ -15,21 +15,13 @@ interface Profile {
   // add additional profile fields if needed
 }
 
-interface RequestRoleUser {
-  id: string;
-  email: string | null;
-  // add additional user fields if needed
-}
-
 interface RequestRoleClientComponentProps {
-  user: RequestRoleUser;
   profile: Profile;
   isPending: boolean;
   roles: Role[];
 }
 
 export default function RequestRoleClientComponent({
-  user,
   profile,
   roles,
   isPending,
@@ -57,7 +49,7 @@ export default function RequestRoleClientComponent({
 
     try {
       // Insert the role request into the 'role_requests' table
-      const { data: _data, error } = await supabase
+      const { error } = await supabase
         .from('role_requests')
         .insert([
           {
@@ -75,8 +67,8 @@ export default function RequestRoleClientComponent({
         setMessage('Role request submitted successfully.');
         setMessageType('success');
       }
-    } catch (error) {
-      console.error('Error submitting request:', error);
+    } catch (err) {
+      console.error('Error submitting request:', err);
       setMessage('An error occurred while submitting the role request.');
       setMessageType('error');
     }
