@@ -1,4 +1,3 @@
-// BagScannerSection.tsx
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -51,10 +50,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [showScanner, setShowScanner] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
 
-  // Group the scanned bags
+  // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
 
-  // Helper functions that use the passed props:
+  // Helper functions for display:
   const getStrainName = (id?: string | null) =>
     initialStrains.find((s) => s.id === id)?.name || 'Unknown';
   const getHarvestRoomName = (id?: string | null) =>
@@ -99,10 +98,12 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     }
   };
 
+  // onScan now accepts an array of IDetectedBarcode.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
+    console.log('Detected codes:', detectedCodes);
     if (detectedCodes && detectedCodes.length > 0) {
-      // Assuming the detected barcode object has a property 'rawValue'
       const result = detectedCodes[0].rawValue;
+      console.log('Scanned result:', result);
       if (result) {
         handleScanBag(result);
       }
@@ -134,7 +135,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       </div>
       {showScanner && (
         <div className="mb-4">
-          <Scanner onScan={handleScan} />
+          <Scanner
+            onScan={handleScan}
+            onError={(err) => console.error('Scanner error:', err)}
+          />
         </div>
       )}
       {scannedBags.length > 0 ? (
@@ -185,7 +189,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
                     className="border p-1 rounded w-24"
                   />
                   <span>
-                    Subtotal: ${ (groupPrices[group.key] || 0) * group.bags.length }
+                    Subtotal: ${(groupPrices[group.key] || 0) * group.bags.length}
                   </span>
                 </div>
               </div>
