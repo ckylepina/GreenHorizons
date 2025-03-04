@@ -23,10 +23,10 @@ export default function EmployeesSection({ employees }: EmployeesSectionProps) {
             return (
               <li
                 key={emp.id}
-                className="p-2 bg-neutral-800 rounded-md flex justify-between items-center"
+                className="p-2 rounded-md flex justify-between items-center"
               >
                 <div>
-                  <span className="text-white font-medium mr-2">
+                  <span className="font-medium mr-2">
                     {profile ? `${profile.first_name} ${profile.last_name}` : 'No Name'}
                   </span>
                   <span className="text-sm text-gray-400">

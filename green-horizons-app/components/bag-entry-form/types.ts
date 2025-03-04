@@ -51,11 +51,11 @@ export interface HarvestRoom {
 }
 
 export interface FormData {
+  harvest_room_id: string;
   strain_id: string;
   size_category_id: string;
-  harvest_room_id: string;
   weight: number;
-  num_bags: number;
+  num_bags: number | string;
 }
 
 export interface InsertedGroup {

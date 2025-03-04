@@ -1,3 +1,4 @@
+// HomePage (server component)
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
 import {
@@ -14,11 +15,13 @@ import {
   getAllTenants,
   getCurrentInventory,
   getDailyBags,
+  getMyBags, // Import the getMyBags query
 } from '@/utils/supabase/queries';
 import AdminDashboardComponent from '@/components/Dashboard/AdminDashboardComponent';
 import SalesDashboard from '@/components/Dashboard/SalesDashboard';
 import SellerDashboard from '@/components/Dashboard/SellerDashboard';
 import InventoryManagementDashboard from '@/app/inventory-management/dashboard';
+import CEODashboard from '@/components/CEODashboard'; // New import for CEO dashboard
 import { BagRecord, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
 import { User, Profile, Employee, Seller, RoleRequest, SalesData } from '../types/dashboard';
 
@@ -66,13 +69,13 @@ export default async function HomePage() {
       profiles: Array.isArray(r.profiles)
         ? (r.profiles as unknown[]).map((p) => p as Profile)
         : r.profiles
-          ? [r.profiles as Profile]
-          : [],
+        ? [r.profiles as Profile]
+        : [],
       roles: Array.isArray(r.roles)
         ? (r.roles as unknown[]).map((r) => r as { id: string; name: string })
         : r.roles
-          ? [r.roles as { id: string; name: string }]
-          : [],
+        ? [r.roles as { id: string; name: string }]
+        : [],
       created_at: r.created_at || "",
     };
   });
@@ -84,8 +87,30 @@ export default async function HomePage() {
   const role = employee.role_name;
   console.log('Employee role:', role);
 
-  if (role === 'admin' || role === 'super_admin') {
-    // Declare variables in the outer scope.
+  if (role === 'CEO') {
+    // For CEO, fetch sales data to drive the CEO dashboard.
+    type SaleWithDeal = SalesData & { deal?: unknown };
+    const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.
+    const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
+      const saleCopy = { ...sale };
+      delete saleCopy.deal;
+      return saleCopy;
+    });
+
+    // Transform SalesData to match the SalesRecord type expected by CEODashboard.
+    // Mapping sale_date to date, total_amount to actual & forecast, and providing default values for the missing fields.
+    const salesRecords = salesData.map((sale) => ({
+      date: sale.sale_date,        // Map sale_date to date
+      actual: sale.total_amount,   // Use total_amount as actual
+      forecast: sale.total_amount, // Example: using total_amount as forecast (adjust as needed)
+      inflow: 0,                   // Default or computed value for inflow
+      outflow: 0,                  // Default or computed value for outflow
+      otherFinancial: 0,           // Default value for otherFinancial
+    }));
+    
+    return <CEODashboard salesData={salesRecords} />;
+  } else if (role === 'admin' || role === 'super_admin') {
+    // Admin Dashboard
     let employees: Employee[] = [];
     let sellers: Seller[] = [];
     let dailyBags: BagRecord[] = [];
@@ -113,18 +138,18 @@ export default async function HomePage() {
           profiles: Array.isArray(e.profiles)
             ? (e.profiles as unknown[]).map((p) => p as Profile)
             : e.profiles
-              ? [e.profiles as Profile]
-              : [],
+            ? [e.profiles as Profile]
+            : [],
           roles: Array.isArray(e.roles)
             ? (e.roles as unknown[]).map((r) => r as { id: string; name: string })
             : e.roles
-              ? [e.roles as { id: string; name: string }]
-              : [],
+            ? [e.roles as { id: string; name: string }]
+            : [],
           tenants: Array.isArray(e.tenants)
             ? (e.tenants as unknown[]).map((t) => t as { id: string; name: string })
             : e.tenants
-              ? [e.tenants as { id: string; name: string }]
-              : [],
+            ? [e.tenants as { id: string; name: string }]
+            : [],
           role_name: e.role_name || "",
           profile_id: e.profile_id || "",
           role_id: e.role_id || "",
@@ -133,7 +158,8 @@ export default async function HomePage() {
 
       sellers = await getSellers(supabase);
       dailyBags = await getDailyBags(supabase);
-      inventoryBags = await getCurrentInventory(supabase);
+      // Use getMyBags to get the bag data with weight.
+      inventoryBags = await getMyBags(supabase, employee.id);
       strains = await getStrains(supabase);
       bagSizes = await getBagSizeCategories(supabase);
       harvestRooms = await getHarvestRooms(supabase);
@@ -159,7 +185,6 @@ export default async function HomePage() {
   } else if (role === 'sales') {
     type SaleWithDeal = SalesData & { deal?: unknown };
     const rawSalesData = await getSales(supabase, {});
-    // Create a copy of each sale, remove the 'deal' property, and return the clean object.
     const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
       const saleCopy = { ...sale };
       delete saleCopy.deal;

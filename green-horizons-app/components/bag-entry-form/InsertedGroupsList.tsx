@@ -1,29 +1,57 @@
-// components/bag-entry-form/InsertedGroupsList.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import BulkEditForm from './BulkEditForm';
 import LabelsToPrint from './LabelsToPrint';
 import { InsertedGroup, Strain, BagSize, HarvestRoom, BagRecord } from './types';
 
 /**
- * This helper function opens a new window with the given HTML content
- * and then calls print() on that window.
+ * Opens a new window with custom print CSS and triggers print().
+ * This version is optimized for laptop printing.
  */
 function printLabels(htmlContent: string) {
   const printWindow = window.open('', '_blank', 'width=800,height=600');
   if (!printWindow) return;
-
+  
   printWindow.document.write(`
     <!DOCTYPE html>
     <html>
       <head>
         <title>Print Labels</title>
-        <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
         <style>
+          /* Screen styles for preview */
+          @media screen {
+            body {
+              margin: 20px;
+              padding: 0;
+            }
+            .label {
+              width: 3.5in;
+              height: 1in;
+              border: 1px solid #000;
+              margin: 10px auto;
+            }
+          }
+          /* Print styles */
           @media print {
-            @page { margin: 0; }
-            body { margin: 0; padding: 0; }
+            @page {
+              size: 3.5in 1in;
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+            }
+            .label {
+              width: 3.5in;
+              height: 1in;
+              overflow: hidden;
+              page-break-inside: avoid;
+              break-inside: avoid;
+              border: none !important;  /* Override inline border */
+              margin: 0 !important;
+              padding: 0.1in; /* preserve padding if needed */
+            }
           }
         </style>
       </head>
@@ -32,9 +60,10 @@ function printLabels(htmlContent: string) {
       </body>
     </html>
   `);
+  
   printWindow.document.close();
   printWindow.focus();
-
+  
   setTimeout(() => {
     printWindow.print();
     printWindow.close();
@@ -46,7 +75,6 @@ interface InsertedGroupsListProps {
   loading: boolean;
   bulkEditMode: boolean;
   bulkEditGroupId: string | null;
-  // Removed onReprintGroup since it's not used.
   onStartBulkEdit: (groupId: string) => void;
   onCancelBulkEdit: () => void;
   onApplyBulkEdit: (fields: Partial<BagRecord>) => Promise<void>;
@@ -70,30 +98,8 @@ export default function InsertedGroupsList({
   serverBagSizes,
 }: InsertedGroupsListProps) {
   const [showLabelsForGroup, setShowLabelsForGroup] = useState<string | null>(null);
-  const [isPrinting, setIsPrinting] = useState(false);
   const [areLabelsLoading, setAreLabelsLoading] = useState(false);
 
-  // Listen for the afterprint event to clear the printing indicator.
-  useEffect(() => {
-    const handleAfterPrint = () => {
-      setIsPrinting(false);
-    };
-    window.addEventListener('afterprint', handleAfterPrint);
-    return () => {
-      window.removeEventListener('afterprint', handleAfterPrint);
-    };
-  }, []);
-
-  // This function triggers printing using the always-rendered hidden container.
-  const handlePrintNow = (groupId: string) => {
-    setIsPrinting(true);
-    const content = document.getElementById(`printable-area-${groupId}`)?.innerHTML;
-    if (content) {
-      printLabels(content);
-    }
-  };
-
-  // When toggling "Show/Print Labels," simulate a loading delay.
   const toggleLabels = (groupId: string) => {
     if (showLabelsForGroup === groupId) {
       setShowLabelsForGroup(null);
@@ -102,7 +108,15 @@ export default function InsertedGroupsList({
       setShowLabelsForGroup(groupId);
       setTimeout(() => {
         setAreLabelsLoading(false);
-      }, 1000); // adjust delay as needed
+      }, 1000);
+    }
+  };
+
+  // Grab the hidden printable HTML and pass it to printLabels().
+  const printGroupLabels = (groupId: string) => {
+    const printableArea = document.getElementById(`printable-area-${groupId}`);
+    if (printableArea) {
+      printLabels(printableArea.innerHTML);
     }
   };
 
@@ -116,7 +130,7 @@ export default function InsertedGroupsList({
       <ul className="space-y-6">
         {allGroups.map((group, index) => (
           <li key={group.groupId} className="border p-4 rounded-md">
-            <div className="flex flex-col gap-1 mb-2 print:hidden">
+            <div className="flex flex-col gap-1 mb-2">
               <strong>Group #{index + 1}</strong>
               <span>{group.bagCount} bag(s) inserted</span>
               <span className="text-sm text-gray-600">
@@ -124,21 +138,12 @@ export default function InsertedGroupsList({
               </span>
             </div>
 
-            {/* Buttons for non-print view */}
-            <div className="print:hidden">
-              <button
-                onClick={() => handlePrintNow(group.groupId)}
-                className="bg-green-600 text-white px-3 py-1 rounded mr-2"
-              >
-                Reprint Group
-              </button>
+            <div className="flex gap-2">
               <button
                 onClick={() => toggleLabels(group.groupId)}
-                className="bg-yellow-500 text-white px-3 py-1 rounded mr-2"
+                className="bg-yellow-500 text-white px-3 py-1 rounded"
               >
-                {showLabelsForGroup === group.groupId
-                  ? 'Hide Labels'
-                  : 'Show/Print Labels'}
+                {showLabelsForGroup === group.groupId ? 'Hide Labels' : 'Show/Print Labels'}
               </button>
               {(!bulkEditMode || bulkEditGroupId !== group.groupId) && (
                 <button
@@ -150,8 +155,8 @@ export default function InsertedGroupsList({
               )}
             </div>
 
-            {/* Always render the printable labels container (hidden on screen but available for printing) */}
-            <div id={`printable-area-${group.groupId}`} className="hidden print:block">
+            {/* Hidden printable container */}
+            <div id={`printable-area-${group.groupId}`} className="hidden">
               <LabelsToPrint
                 bags={group.bags}
                 serverStrains={serverStrains}
@@ -160,28 +165,30 @@ export default function InsertedGroupsList({
               />
             </div>
 
-            {/* Optionally render visible labels if toggled */}
             {showLabelsForGroup === group.groupId && (
-              <div className="mt-4 print:hidden">
+              <div className="mt-4">
                 {areLabelsLoading ? (
                   <p className="text-center text-sm">Loading labels...</p>
                 ) : (
-                  <LabelsToPrint
-                    bags={group.bags}
-                    serverStrains={serverStrains}
-                    serverBagSizes={serverBagSizes}
-                    serverHarvestRooms={serverHarvestRooms}
-                  />
+                  <>
+                    <div className="border p-2">
+                      <LabelsToPrint
+                        bags={group.bags}
+                        serverStrains={serverStrains}
+                        serverBagSizes={serverBagSizes}
+                        serverHarvestRooms={serverHarvestRooms}
+                      />
+                    </div>
+                    <div className="mt-2">
+                      <button
+                        onClick={() => printGroupLabels(group.groupId)}
+                        className="bg-blue-600 text-white px-3 py-1 rounded"
+                      >
+                        Print Now
+                      </button>
+                    </div>
+                  </>
                 )}
-                <div className="mt-2 print:hidden">
-                  <button
-                    onClick={() => handlePrintNow(group.groupId)}
-                    className="bg-blue-600 text-white px-3 py-1 rounded"
-                  >
-                    Print Now
-                  </button>
-                  {isPrinting && <p className="text-center text-sm">Loading...</p>}
-                </div>
               </div>
             )}
 

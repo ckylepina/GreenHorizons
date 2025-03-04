@@ -12,7 +12,6 @@ const Header = () => {
         <div className="flex gap-5 items-center font-semibold">
         <Link
         href="/"
-        target="_blank"
       >
         <Button className="flex items-center gap-2 bg-white" size={"sm"}>
           <Image className="bg-white" src="/greenhorizonsicon.png" alt="Green Horizons Icon" width={150} height={150} unoptimized/>
