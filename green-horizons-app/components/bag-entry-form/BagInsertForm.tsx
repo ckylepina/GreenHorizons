@@ -11,7 +11,7 @@ interface BagInsertFormProps {
   employeeId: string;
   tenantId: string;
   loading: boolean;
-  onInsertNewGroup: (bags: BagRecord[]) => Promise<void>;
+  onInsertNewGroup: (bags: Omit<BagRecord, 'id'>[]) => Promise<void>;
 }
 
 export default function BagInsertForm({
@@ -23,7 +23,7 @@ export default function BagInsertForm({
   loading,
   onInsertNewGroup,
 }: BagInsertFormProps) {
-  // Initialize formData. Note: num_bags is allowed to be a string or a number.
+  // Initialize formData. Note: num_bags can be a string or a number.
   const [formData, setFormData] = useState<FormData>({
     harvest_room_id: '',
     strain_id: '',
@@ -40,27 +40,25 @@ export default function BagInsertForm({
 
   function handleFormChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = e.target;
-    // Instead of using any, we now declare newValue as string | number.
-    let newValue: string | number = value; // default as string
+    // Declare newValue as string | number.
+    let newValue: string | number = value;
 
     if (name === 'num_bags') {
-      // If the value is empty, store an empty string; otherwise, parse to an integer.
       newValue = value === '' ? '' : parseInt(value, 10);
       if (isNaN(newValue as number)) {
         newValue = '';
       }
     } else if (name === 'weight') {
-      // Similarly, for weight store 0 if empty.
       newValue = value === '' ? 0 : parseFloat(value);
     }
 
-    // Update the form data.
+    // Update formData.
     setFormData((prev) => ({
       ...prev,
       [name]: newValue,
     }));
 
-    // When harvest room changes, reset subsequent fields and filter strains.
+    // When harvest room changes, reset dependent fields and filter strains.
     if (name === 'harvest_room_id') {
       setFormData((prev) => ({
         ...prev,
@@ -70,10 +68,16 @@ export default function BagInsertForm({
         num_bags: '',
       }));
       if (value) {
-        // Filter strains using the harvest_room_ids array.
-        const filtered = serverStrains.filter(
-          (strain) => strain.harvest_room_ids?.includes(value)
-        );
+        console.log("Selected harvest room id:", value);
+        const filtered = serverStrains.filter((strain) => {
+          console.log("Strain:", strain);
+          // If harvest_room_id is an array, check if it includes value; otherwise, compare directly.
+          if (Array.isArray(strain.harvest_room_id)) {
+            return strain.harvest_room_id.includes(value);
+          }
+          return strain.harvest_room_id === value;
+        });
+        console.log("Filtered strains:", filtered);
         setFilteredStrains(filtered);
       } else {
         setFilteredStrains([]);
@@ -90,7 +94,7 @@ export default function BagInsertForm({
       }));
     }
 
-    // When bag size changes, reset weight and number of bags.
+    // When bag size changes, reset weight and num_bags.
     if (name === 'size_category_id') {
       setFormData((prev) => ({
         ...prev,
@@ -99,7 +103,7 @@ export default function BagInsertForm({
       }));
     }
 
-    // When weight changes, reset number of bags.
+    // When weight changes, reset num_bags.
     if (name === 'weight') {
       setFormData((prev) => ({
         ...prev,
@@ -111,17 +115,15 @@ export default function BagInsertForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const { strain_id, size_category_id, harvest_room_id, weight, num_bags } = formData;
-    // Convert num_bags to a number (if it's not already) and validate.
     const numBags = typeof num_bags === 'string' ? parseInt(num_bags, 10) : num_bags;
     if (!strain_id || !size_category_id || !harvest_room_id || weight <= 0 || !numBags || numBags < 1) {
-      // Basic validation: ensure all fields have valid values.
+      // Basic validation.
       return;
     }
 
     const uniqueTime = Date.now();
 
-    // Build an array of bag records.
-    const newBagsData: BagRecord[] = Array.from({ length: numBags }, (_, idx) => {
+    const newBagsData: Omit<BagRecord, 'id'>[] = Array.from({ length: numBags }, (_, idx) => {
       const uniqueSuffix = `-${uniqueTime}-${Math.floor(Math.random() * 100000)}`;
       const qrData = JSON.stringify({
         strain_id,
@@ -133,14 +135,12 @@ export default function BagInsertForm({
       });
 
       return {
-        // Supply a temporary empty string for id so that the object satisfies the BagRecord type.
-        id: '',
         strain_id,
         size_category_id,
         harvest_room_id,
         employee_id: employeeId,
         tenant_id: tenantId,
-        weight: weight,
+        weight,
         current_status: 'in_inventory',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -155,7 +155,7 @@ export default function BagInsertForm({
     <form onSubmit={handleSubmit} className="max-w-lg mx-auto flex flex-col gap-4">
       <h2 className="text-xl font-semibold mb-2">Insert New Bag Group</h2>
 
-      {/* 1. Harvest Room (always enabled) */}
+      {/* Harvest Room */}
       <label className="flex flex-col gap-1">
         <span>Harvest Room:</span>
         <select
@@ -181,7 +181,7 @@ export default function BagInsertForm({
         </select>
       </label>
 
-      {/* 2. Strain (disabled until harvest room is chosen) */}
+      {/* Strain */}
       <label className="flex flex-col gap-1">
         <span>Strain:</span>
         <select
@@ -201,7 +201,7 @@ export default function BagInsertForm({
         </select>
       </label>
 
-      {/* 3. Bag Size (disabled until strain is chosen) */}
+      {/* Bag Size */}
       <label className="flex flex-col gap-1">
         <span>Bag Size:</span>
         <select
@@ -221,7 +221,7 @@ export default function BagInsertForm({
         </select>
       </label>
 
-      {/* 4. Weight (disabled until bag size is chosen) */}
+      {/* Weight */}
       <label className="flex flex-col gap-1">
         <span>Weight (lbs or grams):</span>
         <input
@@ -238,7 +238,7 @@ export default function BagInsertForm({
         />
       </label>
 
-      {/* 5. Number of Bags (disabled until weight is entered) */}
+      {/* Number of Bags */}
       <label className="flex flex-col gap-1">
         <span>Number of Bags:</span>
         <input

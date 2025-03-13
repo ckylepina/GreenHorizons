@@ -37,7 +37,7 @@ export interface Customer {
 export interface Strain {
   id: string;
   name: string;
-  harvest_room_ids?: string[];
+  harvest_room_id?: string[];
 }
 
 export interface BagSize {

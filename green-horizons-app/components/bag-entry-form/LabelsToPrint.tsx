@@ -36,7 +36,7 @@ export default function LabelsToPrint({
       <style jsx global>{`
         @media print {
           @page {
-            size: 3.5in 1in;
+            size: 3.5in 1.1in;
             margin: 0;
           }
           body {
@@ -58,12 +58,12 @@ export default function LabelsToPrint({
             className="label"
             style={{
               width: '3.5in',
-              height: '1in',
+              height: '1.1in',
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
               boxSizing: 'border-box',
-              padding: '0.1in',
+              padding: '0.3in',
               margin: '0 auto',
               border: '1px solid #000', // Screen preview only
             }}
@@ -78,29 +78,37 @@ export default function LabelsToPrint({
                 textAlign: 'left',
                 fontSize: '9pt',
                 fontWeight: 'Bold',
-                lineHeight: '1.1',
+                lineHeight: '1.5',
                 paddingRight: '0.05in',
               }}
             >
               <div>
-                {getHarvestRoomName(bag.harvest_room_id)}, {getStrainName(bag.strain_id)}
+                {getHarvestRoomName(bag.harvest_room_id)}
               </div>
               <div>
-                {getBagSizeName(bag.size_category_id)}, {bag.weight}lbs
+                {getStrainName(bag.strain_id)}
+              </div>
+              <div>
+                {getBagSizeName(bag.size_category_id)}
+              </div>
+              <div>
+              {bag.weight}lbs
               </div>
             </div>
             {/* Right side: QR Code */}
             <div
               style={{
-                width: '0.8in',
-                height: '0.8in',
+                width: '1in',
+                height: '1in',
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
+                transform: 'scale(1.5)',
+                transformOrigin: 'center',
               }}
             >
               {bag.qr_code ? (
-                <QRImage text={bag.qr_code} options={{ scale: 1.2 }} />
+                <QRImage text={bag.qr_code} options={{ scale: 1 }} />
               ) : (
                 <span style={{ fontSize: '8pt' }}>No QR Code</span>
               )}

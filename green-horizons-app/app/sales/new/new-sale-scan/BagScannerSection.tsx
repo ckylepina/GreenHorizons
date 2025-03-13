@@ -61,7 +61,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const getBagSizeName = (id?: string | null) =>
     initialBagSizes.find((b) => b.id === id)?.name || 'Unknown';
 
-  // Dummy fetch: in your real implementation, fetch bag details from Supabase.
+  // Fetch bag details from Supabase.
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
     const { data, error } = await supabase
@@ -73,7 +73,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       alert('Bag not found for QR code: ' + qrValue);
       console.error('Error fetching bag by QR code:', error);
     } else if (data) {
-      // Create a complete bag record by providing default values for missing fields.
+      // Create a complete bag record with default values as needed.
       const bag: BagRecord = {
         id: data.id || qrValue,
         current_status: data.current_status || 'in_inventory',
@@ -98,16 +98,15 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     }
   };
 
-  // onScan now accepts an array of IDetectedBarcode.
+  // onScan now accepts an array of detected codes.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
     console.log('Detected codes:', detectedCodes);
-    if (detectedCodes && detectedCodes.length > 0) {
-      const result = detectedCodes[0].rawValue;
-      console.log('Scanned result:', result);
-      if (result) {
-        handleScanBag(result);
+    detectedCodes.forEach(({ rawValue }) => {
+      if (rawValue) {
+        console.log('Scanned result:', rawValue);
+        handleScanBag(rawValue);
       }
-    }
+    });
   };
 
   const removeScannedBag = (id: string) => {
@@ -129,18 +128,22 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     <section className="border p-4 rounded shadow mb-8">
       <h2 className="text-xl font-semibold mb-2">Scanned Bags & Group Pricing</h2>
       <div className="mb-4">
-        <button onClick={() => setShowScanner((prev) => !prev)} className="bg-blue-500 text-white px-4 py-2 rounded">
+        <button
+          onClick={() => setShowScanner((prev) => !prev)}
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+        >
           {showScanner ? 'Hide Scanner' : 'Show Scanner'}
         </button>
       </div>
-      {showScanner && (
-        <div className="mb-4">
-          <Scanner
-            onScan={handleScan}
-            onError={(err) => console.error('Scanner error:', err)}
-          />
-        </div>
-      )}
+      <div className="mb-4">
+      <Scanner
+        onScan={handleScan}
+        onError={(err) => console.error('Scanner error:', err)}
+        formats={['qr_code']} // Restricts scanning to only QR codes
+        paused={!showScanner}
+        allowMultiple={true}
+      />
+      </div>
       {scannedBags.length > 0 ? (
         <>
           <div className="mb-4">

@@ -1,4 +1,3 @@
-// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -7,11 +6,12 @@ import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
 import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
+// Define the props interface for this component
 interface BagEntryFormProps {
   serverStrains: Strain[];
   serverBagSizes: BagSize[];
   serverHarvestRooms: HarvestRoom[];
-  currentUserId: string; // For RLS
+  currentUserId: string;
   employeeId: string;
   tenantId: string;
 }
@@ -39,11 +39,12 @@ export default function BagEntryForm({
   // ---------------------------------------
   // 1) Insert new group logic
   // ---------------------------------------
-  async function insertNewGroup(newBagsData: BagRecord[]): Promise<void> {
+  async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]): Promise<void> {
     try {
       setLoading(true);
       setMessages([]);
 
+      // Insert without the 'id' field so Supabase auto-generates it.
       const { data, error } = await supabase
         .from('bags')
         .insert(newBagsData)
@@ -57,8 +58,6 @@ export default function BagEntryForm({
         setMessages([{ type: 'success', text: `${bagCount} Bag(s) inserted successfully!` }]);
 
         // Create a new group record.
-        // IMPORTANT: Store the full inserted bag records in the new group,
-        // so that LabelsToPrint can access all the fields (including harvest_room_id)
         const newGroupId = `group-${Date.now()}`;
         const group: InsertedGroup = {
           groupId: newGroupId,
@@ -68,7 +67,6 @@ export default function BagEntryForm({
           bagIds: data.map((bag: BagRecord) => bag.id),
           qrCodes: data.map((bag: BagRecord) => bag.qr_code ?? ''),
         };
-        // Add it to the array of groups
         setAllGroups((prev) => [...prev, group]);
       }
     } catch (err) {
@@ -122,7 +120,6 @@ export default function BagEntryForm({
   // ---------------------------------------
   // 3) Handlers
   // ---------------------------------------
-  // Removed handleReprintGroup as it was not used.
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
@@ -159,7 +156,6 @@ export default function BagEntryForm({
         onCancelBulkEdit={cancelBulkEdit}
         onApplyBulkEdit={applyBulkEdit}
         reversedRooms={reversedRooms}
-        // Pass the harvest rooms here so that LabelsToPrint can find them
         serverHarvestRooms={serverHarvestRooms}
         serverStrains={serverStrains}
         serverBagSizes={serverBagSizes}
@@ -168,9 +164,7 @@ export default function BagEntryForm({
       {messages.map((msg, idx) => (
         <p
           key={idx}
-          className={`mt-2 text-center text-sm ${
-            msg.type === 'error' ? 'text-red-600' : 'text-green-600'
-          }`}
+          className={`mt-2 text-center text-sm ${msg.type === 'error' ? 'text-red-600' : 'text-green-600'}`}
         >
           {msg.text}
         </p>
