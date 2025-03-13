@@ -48,7 +48,9 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 }) => {
   const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
   const [showScanner, setShowScanner] = useState(false);
+  const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
@@ -73,7 +75,6 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       alert('Bag not found for QR code: ' + qrValue);
       console.error('Error fetching bag by QR code:', error);
     } else if (data) {
-      // Create a complete bag record with default values as needed.
       const bag: BagRecord = {
         id: data.id || qrValue,
         current_status: data.current_status || 'in_inventory',
@@ -83,22 +84,34 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         created_at: data.created_at || new Date().toISOString(),
         weight: data.weight || 1,
         qr_code: data.qr_code || qrValue,
-        // Required additional fields:
         employee_id: data.employee_id || null,
         tenant_id: data.tenant_id || 'tenant1',
         updated_at: data.updated_at || null,
       };
-      if (scannedBags.some((b) => b.id === bag.id)) {
-        alert('Bag already scanned.');
+
+      if (removalMode) {
+        // In removal mode, if bag is already scanned, remove it.
+        if (scannedBags.some((b) => b.id === bag.id)) {
+          const newBags = scannedBags.filter((b) => b.id !== bag.id);
+          setScannedBags(newBags);
+          onBagsChange(newBags);
+          alert('Bag removed.');
+        } else {
+          alert('Bag not found in scanned list.');
+        }
       } else {
-        const newBags = [...scannedBags, bag];
-        setScannedBags(newBags);
-        onBagsChange(newBags);
+        // Normal mode: if bag is already scanned, alert; otherwise, add it.
+        if (scannedBags.some((b) => b.id === bag.id)) {
+          alert('Bag already scanned.');
+        } else {
+          const newBags = [...scannedBags, bag];
+          setScannedBags(newBags);
+          onBagsChange(newBags);
+        }
       }
     }
   };
 
-  // onScan now accepts an array of detected codes.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
     console.log('Detected codes:', detectedCodes);
     detectedCodes.forEach(({ rawValue }) => {
@@ -109,12 +122,14 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     });
   };
 
+  // Remove a single scanned bag (if needed in expanded mode).
   const removeScannedBag = (id: string) => {
     const newBags = scannedBags.filter((bag) => bag.id !== id);
     setScannedBags(newBags);
     onBagsChange(newBags);
   };
 
+  // Handle group price change.
   const handleGroupPriceChange = (groupKey: string, price: number) => {
     setGroupPrices((prev) => ({ ...prev, [groupKey]: price }));
   };
@@ -126,82 +141,115 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 
   return (
     <section className="border p-4 rounded shadow mb-8">
-      <h2 className="text-xl font-semibold mb-2">Scanned Bags & Group Pricing</h2>
-      <div className="mb-4">
+      <h2 className="text-xl font-semibold mb-2">Grouped Bags & Group Pricing</h2>
+      <div className="flex flex-wrap gap-4 mb-4">
         <button
           onClick={() => setShowScanner((prev) => !prev)}
           className="bg-blue-500 text-white px-4 py-2 rounded"
         >
           {showScanner ? 'Hide Scanner' : 'Show Scanner'}
         </button>
+        <button
+          onClick={() => setRemovalMode((prev) => !prev)}
+          className={`px-4 py-2 rounded ${
+            removalMode ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+          }`}
+        >
+          {removalMode ? 'Removal Mode: ON' : 'Removal Mode: OFF'}
+        </button>
       </div>
-      <div className="mb-4">
-      <Scanner
-        onScan={handleScan}
-        onError={(err) => console.error('Scanner error:', err)}
-        formats={['qr_code']} // Restricts scanning to only QR codes
-        paused={!showScanner}
-        allowMultiple={true}
-      />
-      </div>
-      {scannedBags.length > 0 ? (
-        <>
-          <div className="mb-4">
-            <h3 className="font-bold text-lg">Ungrouped Scanned Bags</h3>
-            <ul className="list-disc pl-5">
-              {scannedBags.map((bag) => (
-                <li key={bag.id}>
-                  ID: {bag.id} – {bag.qr_code}
-                  <button onClick={() => removeScannedBag(bag.id)} className="ml-2 text-red-500">
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-bold text-lg mb-2">Grouped Bags</h3>
-            {groups.map((group) => (
-              <div key={group.key} className="border p-2 rounded mb-2">
-                <div className="mb-1">
-                  <span className="font-semibold">Harvest Room:</span>{' '}
-                  {getHarvestRoomName(group.harvest_room_id)}
-                </div>
-                <div className="mb-1">
-                  <span className="font-semibold">Strain:</span>{' '}
-                  {getStrainName(group.strain_id)}
-                </div>
-                <div className="mb-1">
-                  <span className="font-semibold">Bag Size:</span>{' '}
-                  {getBagSizeName(group.size_category_id)}
-                </div>
-                <div className="mb-1">
-                  <span className="font-semibold">Weight:</span> {group.weight}
-                </div>
-                <div className="mb-1">
-                  <span className="font-semibold">Count:</span> {group.bags.length}
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="font-semibold">Price per Bag: </label>
-                  <input
-                    type="number"
-                    value={groupPrices[group.key] || ''}
-                    onChange={(e) =>
-                      handleGroupPriceChange(group.key, parseFloat(e.target.value) || 0)
-                    }
-                    className="border p-1 rounded w-24"
-                  />
-                  <span>
-                    Subtotal: ${(groupPrices[group.key] || 0) * group.bags.length}
-                  </span>
-                </div>
+      {showScanner && (
+        <div className="mb-4">
+          <Scanner
+            onScan={handleScan}
+            onError={(err) => console.error('Scanner error:', err)}
+            formats={['qr_code']}
+            paused={!showScanner}
+            allowMultiple={true}
+          />
+        </div>
+      )}
+      {groups.length > 0 ? (
+        <div>
+          {groups.map((group) => (
+            <div key={group.key} className="border p-2 rounded mb-2">
+              <div className="mb-1">
+                <span className="font-semibold">Harvest Room:</span>{' '}
+                {getHarvestRoomName(group.harvest_room_id)}
               </div>
-            ))}
-            <div className="mt-2 font-bold">
-              Overall Total: ${overallTotal}
+              <div className="mb-1">
+                <span className="font-semibold">Strain:</span>{' '}
+                {getStrainName(group.strain_id)}
+              </div>
+              <div className="mb-1">
+                <span className="font-semibold">Bag Size:</span>{' '}
+                {getBagSizeName(group.size_category_id)}
+              </div>
+              <div className="mb-1">
+                <span className="font-semibold">Weight:</span> {group.weight}
+              </div>
+              <div className="mb-1">
+                <span className="font-semibold">Count:</span> {group.bags.length}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <label className="font-semibold">Price per Bag:</label>
+                <input
+                  type="number"
+                  value={groupPrices[group.key] || ''}
+                  onChange={(e) =>
+                    handleGroupPriceChange(group.key, parseFloat(e.target.value) || 0)
+                  }
+                  className="border p-1 rounded w-24"
+                />
+                <span>
+                  Subtotal: ${(groupPrices[group.key] || 0) * group.bags.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() =>
+                    setExpandedGroups((prev) => ({
+                      ...prev,
+                      [group.key]: !prev[group.key],
+                    }))
+                  }
+                  className="bg-gray-500 text-white px-2 py-1 rounded"
+                >
+                  {expandedGroups[group.key] ? 'Hide Items' : 'Edit Group'}
+                </button>
+                <button
+                  onClick={() => {
+                    // Remove all bags in this group.
+                    group.bags.forEach((bag) => removeScannedBag(bag.id));
+                  }}
+                  className="bg-red-500 text-white px-2 py-1 rounded"
+                >
+                  Remove Group
+                </button>
+              </div>
+              {expandedGroups[group.key] && (
+                <ul className="mt-2">
+                  {group.bags.map((bag) => (
+                    <li key={bag.id} className="flex items-center justify-between border-b pb-1">
+                      <span>
+                        {bag.qr_code} (ID: {bag.id})
+                      </span>
+                      <button
+                        onClick={() => removeScannedBag(bag.id)}
+                        className="bg-red-400 text-white px-2 py-1 rounded"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+          ))}
+          <div className="mt-2 font-bold">
+            Overall Total: ${overallTotal}
           </div>
-        </>
+        </div>
       ) : (
         <p className="text-xs">No bags scanned yet.</p>
       )}
