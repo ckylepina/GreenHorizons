@@ -53,7 +53,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // Use a ref to store the last processed QR code.
+  // Use a ref to track the last processed QR code.
   const lastScannedCodeRef = useRef<string | null>(null);
 
   // Group the scanned bags.
@@ -78,7 +78,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
-    // If this QR code is the same as the last processed one, ignore it.
+    // Throttle: if the current qrValue equals the last processed, skip.
     if (lastScannedCodeRef.current === qrValue) return;
     lastScannedCodeRef.current = qrValue;
 
@@ -108,6 +108,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       };
 
       if (removalMode) {
+        // In removal mode, if the bag is found, remove it.
         setScannedBags(prev => {
           if (prev.some(b => b.id === bag.id)) {
             const newBags = prev.filter(b => b.id !== bag.id);
@@ -115,11 +116,13 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
             alert('Bag removed.');
             return newBags;
           } else {
+            // If bag is not in list, alert once.
             alert('Bag not found in scanned list.');
             return prev;
           }
         });
       } else {
+        // In normal mode, add the bag if it's not already scanned.
         setScannedBags(prev => {
           if (prev.some(b => b.id === bag.id)) {
             alert('Bag already scanned.');
@@ -132,7 +135,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         });
       }
     }
-    // Clear lastScannedCodeRef after 1 second.
+    // Clear the ref after 1 second.
     setTimeout(() => {
       lastScannedCodeRef.current = null;
     }, 1000);
