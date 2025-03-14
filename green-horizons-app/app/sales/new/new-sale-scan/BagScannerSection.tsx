@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Scanner, type IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import type { BagRecord, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
@@ -19,6 +19,7 @@ interface BagScannerSectionProps {
   initialBagSizes: BagSize[];
   initialHarvestRooms: HarvestRoom[];
   onBagsChange: (bags: BagRecord[]) => void;
+  onTotalChange: (total: number) => void;
 }
 
 function groupBags(bags: BagRecord[]): BagGroup[] {
@@ -45,16 +46,29 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   initialBagSizes,
   initialHarvestRooms,
   onBagsChange,
+  onTotalChange,
 }) => {
   const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
   const [showScanner, setShowScanner] = useState(false);
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
+  const [isProcessingScan, setIsProcessingScan] = useState(false);
 
   // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
 
-  // Helper functions for display:
+  // Compute overall total.
+  const overallTotal = groups.reduce((total, group) => {
+    const price = groupPrices[group.key] || 0;
+    return total + price * group.bags.length;
+  }, 0);
+
+  // Propagate overallTotal to the parent.
+  useEffect(() => {
+    onTotalChange(overallTotal);
+  }, [overallTotal, onTotalChange]);
+
+  // Helper display functions.
   const getStrainName = (id?: string | null) =>
     initialStrains.find((s) => s.id === id)?.name || 'Unknown';
   const getHarvestRoomName = (id?: string | null) =>
@@ -73,7 +87,9 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     if (error) {
       alert('Bag not found for QR code: ' + qrValue);
       console.error('Error fetching bag by QR code:', error);
-    } else if (data) {
+      return;
+    }
+    if (data) {
       const bag: BagRecord = {
         id: data.id || qrValue,
         current_status: data.current_status || 'in_inventory',
@@ -89,29 +105,38 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       };
 
       if (removalMode) {
-        // In removal mode, remove the bag if it's in the scanned list.
-        if (scannedBags.some((b) => b.id === bag.id)) {
-          const newBags = scannedBags.filter((b) => b.id !== bag.id);
-          setScannedBags(newBags);
-          onBagsChange(newBags);
-          alert('Bag removed.');
-        } else {
-          alert('Bag not found in scanned list.');
-        }
+        // In removal mode, remove the bag if it's present.
+        setScannedBags((prev) => {
+          if (prev.some((b) => b.id === bag.id)) {
+            const newBags = prev.filter((b) => b.id !== bag.id);
+            onBagsChange(newBags);
+            alert('Bag removed.');
+            return newBags;
+          } else {
+            alert('Bag not found in scanned list.');
+            return prev;
+          }
+        });
       } else {
-        // Normal mode: add the bag if not already scanned.
-        if (scannedBags.some((b) => b.id === bag.id)) {
-          alert('Bag already scanned.');
-        } else {
-          const newBags = [...scannedBags, bag];
-          setScannedBags(newBags);
-          onBagsChange(newBags);
-        }
+        // In normal mode, add the bag if not already scanned.
+        setScannedBags((prev) => {
+          if (prev.some((b) => b.id === bag.id)) {
+            alert('Bag already scanned.');
+            return prev;
+          } else {
+            const newBags = [...prev, bag];
+            onBagsChange(newBags);
+            return newBags;
+          }
+        });
       }
     }
   };
 
+  // Throttle scan events.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
+    if (isProcessingScan) return;
+    setIsProcessingScan(true);
     console.log('Detected codes:', detectedCodes);
     detectedCodes.forEach(({ rawValue }) => {
       if (rawValue) {
@@ -119,26 +144,24 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         handleScanBag(rawValue);
       }
     });
+    setTimeout(() => setIsProcessingScan(false), 1000);
   };
 
   // Remove an entire group.
   const removeGroup = (groupKey: string) => {
-    const newBags = scannedBags.filter((bag) => {
-      const key = `${bag.harvest_room_id ?? 'none'}_${bag.strain_id ?? 'none'}_${bag.size_category_id ?? 'none'}_${bag.weight}`;
-      return key !== groupKey;
+    setScannedBags((prev) => {
+      const newBags = prev.filter((bag) => {
+        const key = `${bag.harvest_room_id ?? 'none'}_${bag.strain_id ?? 'none'}_${bag.size_category_id ?? 'none'}_${bag.weight}`;
+        return key !== groupKey;
+      });
+      onBagsChange(newBags);
+      return newBags;
     });
-    setScannedBags(newBags);
-    onBagsChange(newBags);
   };
 
   const handleGroupPriceChange = (groupKey: string, price: number) => {
     setGroupPrices((prev) => ({ ...prev, [groupKey]: price }));
   };
-
-  const overallTotal = groups.reduce((total, group) => {
-    const price = groupPrices[group.key] || 0;
-    return total + price * group.bags.length;
-  }, 0);
 
   return (
     <section className="border p-4 rounded shadow mb-8">
