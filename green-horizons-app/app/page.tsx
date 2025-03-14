@@ -87,8 +87,8 @@ export default async function HomePage() {
   const role = employee.role_name;
   console.log('Employee role:', role);
 
-  if (role === 'CEO') {
-    // For CEO, fetch sales data to drive the CEO dashboard.
+  if (role === 'Chief Executive Officer') {
+    // For Chief Executive Officer, fetch sales data to drive the CEO dashboard.
     type SaleWithDeal = SalesData & { deal?: unknown };
     const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.
     const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
@@ -98,7 +98,6 @@ export default async function HomePage() {
     });
 
     // Transform SalesData to match the SalesRecord type expected by CEODashboard.
-    // Mapping sale_date to date, total_amount to actual & forecast, and providing default values for the missing fields.
     const salesRecords = salesData.map((sale) => ({
       date: sale.sale_date,        // Map sale_date to date
       actual: sale.total_amount,   // Use total_amount as actual
@@ -109,7 +108,7 @@ export default async function HomePage() {
     }));
     
     return <CEODashboard salesData={salesRecords} />;
-  } else if (role === 'admin' || role === 'super_admin') {
+  } else if (role === 'admin' || role === 'Super Admin') {
     // Admin Dashboard
     let employees: Employee[] = [];
     let sellers: Seller[] = [];
@@ -182,7 +181,7 @@ export default async function HomePage() {
         tenants={tenants}
       />
     );
-  } else if (role === 'sales') {
+  } else if (role === 'Accounting Department') {
     type SaleWithDeal = SalesData & { deal?: unknown };
     const rawSalesData = await getSales(supabase, {});
     const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
@@ -191,9 +190,9 @@ export default async function HomePage() {
       return saleCopy;
     });
     return <SalesDashboard user={user} employee={employee} salesData={salesData} />;
-  } else if (role === 'seller') {
+  } else if (role === 'Chief Of Operations') {
     return <SellerDashboard user={user} />;
-  } else if (role === 'bagger' || role === 'inventory_management') {
+  } else if (role === 'Inventory Management') {
     let inventoryBags: BagRecord[] = [];
     let strains: Strain[] = [];
     let bagSizes: BagSize[] = [];
