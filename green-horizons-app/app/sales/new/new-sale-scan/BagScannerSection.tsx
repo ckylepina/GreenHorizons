@@ -53,6 +53,8 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
+  // New state: record of last alert times per QR code.
+  const [lastAlerted, setLastAlerted] = useState<Record<string, number>>({});
 
   // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
@@ -105,7 +107,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       };
 
       if (removalMode) {
-        // In removal mode, remove the bag if it's present.
+        // In removal mode, remove the bag if present.
         setScannedBags((prev) => {
           if (prev.some((b) => b.id === bag.id)) {
             const newBags = prev.filter((b) => b.id !== bag.id);
@@ -118,17 +120,22 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
           }
         });
       } else {
-        // In normal mode, add the bag if not already scanned.
-        setScannedBags((prev) => {
-          if (prev.some((b) => b.id === bag.id)) {
-            alert('Bag already scanned.');
-            return prev;
-          } else {
+        // In normal mode, check if bag is already scanned.
+        if (scannedBags.some((b) => b.id === bag.id)) {
+          const now = Date.now();
+          // If this QR code was alerted within the last 2 seconds, skip alert.
+          if (lastAlerted[qrValue] && now - lastAlerted[qrValue] < 2000) {
+            return;
+          }
+          setLastAlerted((prev) => ({ ...prev, [qrValue]: now }));
+          alert('Bag already scanned.');
+        } else {
+          setScannedBags((prev) => {
             const newBags = [...prev, bag];
             onBagsChange(newBags);
             return newBags;
-          }
-        });
+          });
+        }
       }
     }
   };
