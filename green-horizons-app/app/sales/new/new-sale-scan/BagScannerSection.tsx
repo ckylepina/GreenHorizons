@@ -53,8 +53,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // New state: a set of QR codes that have already triggered a duplicate alert.
-  const [alertedCodes, setAlertedCodes] = useState<Set<string>>(new Set());
+  const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
 
   // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
@@ -78,6 +77,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
+    // If this QR code is the same as last scanned and we're not in removal mode, ignore it.
+    if (!removalMode && lastScannedCode === qrValue) return;
+    setLastScannedCode(qrValue);
+
     const { data, error } = await supabase
       .from('bags')
       .select('*')
@@ -104,7 +107,6 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       };
 
       if (removalMode) {
-        // In removal mode, remove the bag if present.
         setScannedBags((prev) => {
           if (prev.some((b) => b.id === bag.id)) {
             const newBags = prev.filter((b) => b.id !== bag.id);
@@ -117,21 +119,11 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
           }
         });
       } else {
-        // In normal mode, if the bag is already scanned, show an alert only once.
         setScannedBags((prev) => {
           if (prev.some((b) => b.id === bag.id)) {
-            if (!alertedCodes.has(qrValue)) {
-              alert('Bag already scanned.');
-              setAlertedCodes((prevSet) => new Set(prevSet).add(qrValue));
-            }
+            alert('Bag already scanned.');
             return prev;
           } else {
-            // When a new bag is scanned, remove it from alertedCodes (if present).
-            setAlertedCodes((prevSet) => {
-              const newSet = new Set(prevSet);
-              newSet.delete(qrValue);
-              return newSet;
-            });
             const newBags = [...prev, bag];
             onBagsChange(newBags);
             return newBags;
@@ -139,9 +131,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         });
       }
     }
+    // Clear lastScannedCode after a delay so that repeated scanning is prevented.
+    setTimeout(() => setLastScannedCode(null), 2000);
   };
 
-  // Throttle scan events.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
     if (isProcessingScan) return;
     setIsProcessingScan(true);
