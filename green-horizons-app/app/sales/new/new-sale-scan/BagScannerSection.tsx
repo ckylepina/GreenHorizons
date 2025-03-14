@@ -53,7 +53,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // Use a ref to track the last processed QR code.
+  // Use a ref to store the last processed QR code.
   const lastScannedCodeRef = useRef<string | null>(null);
 
   // Group the scanned bags.
@@ -78,8 +78,8 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
-    // If the incoming code matches the last processed code (and we're not in removal mode), skip processing.
-    if (!removalMode && lastScannedCodeRef.current === qrValue) return;
+    // If this QR code is the same as the last processed one, ignore it.
+    if (lastScannedCodeRef.current === qrValue) return;
     lastScannedCodeRef.current = qrValue;
 
     const { data, error } = await supabase
@@ -108,9 +108,9 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       };
 
       if (removalMode) {
-        setScannedBags((prev) => {
-          if (prev.some((b) => b.id === bag.id)) {
-            const newBags = prev.filter((b) => b.id !== bag.id);
+        setScannedBags(prev => {
+          if (prev.some(b => b.id === bag.id)) {
+            const newBags = prev.filter(b => b.id !== bag.id);
             onBagsChange(newBags);
             alert('Bag removed.');
             return newBags;
@@ -120,8 +120,8 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
           }
         });
       } else {
-        setScannedBags((prev) => {
-          if (prev.some((b) => b.id === bag.id)) {
+        setScannedBags(prev => {
+          if (prev.some(b => b.id === bag.id)) {
             alert('Bag already scanned.');
             return prev;
           } else {
@@ -132,7 +132,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         });
       }
     }
-    // Clear lastScannedCode after 1 second.
+    // Clear lastScannedCodeRef after 1 second.
     setTimeout(() => {
       lastScannedCodeRef.current = null;
     }, 1000);
@@ -152,8 +152,8 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   };
 
   const removeGroup = (groupKey: string) => {
-    setScannedBags((prev) => {
-      const newBags = prev.filter((bag) => {
+    setScannedBags(prev => {
+      const newBags = prev.filter(bag => {
         const key = `${bag.harvest_room_id ?? 'none'}_${bag.strain_id ?? 'none'}_${bag.size_category_id ?? 'none'}_${bag.weight}`;
         return key !== groupKey;
       });
@@ -163,7 +163,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   };
 
   const handleGroupPriceChange = (groupKey: string, price: number) => {
-    setGroupPrices((prev) => ({ ...prev, [groupKey]: price }));
+    setGroupPrices(prev => ({ ...prev, [groupKey]: price }));
   };
 
   return (
@@ -171,13 +171,13 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       <h2 className="text-xl font-semibold mb-2">Grouped Bags & Pricing</h2>
       <div className="flex flex-wrap gap-4 mb-4">
         <button
-          onClick={() => setShowScanner((prev) => !prev)}
+          onClick={() => setShowScanner(prev => !prev)}
           className="bg-blue-500 text-white px-4 py-2 rounded"
         >
           {showScanner ? 'Hide Scanner' : 'Show Scanner'}
         </button>
         <button
-          onClick={() => setRemovalMode((prev) => !prev)}
+          onClick={() => setRemovalMode(prev => !prev)}
           className={`px-4 py-2 rounded ${removalMode ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}
         >
           {removalMode ? 'Removal Mode: ON' : 'Removal Mode: OFF'}
@@ -196,7 +196,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       )}
       {groups.length > 0 ? (
         <div>
-          {groups.map((group) => (
+          {groups.map(group => (
             <div key={group.key} className="border p-2 rounded mb-2 flex flex-col">
               <div className="flex justify-between items-center">
                 <div>
