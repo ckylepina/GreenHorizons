@@ -68,7 +68,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     onTotalChange(overallTotal);
   }, [overallTotal, onTotalChange]);
 
-  // Helper display functions.
+  // Helper functions for display.
   const getStrainName = (id?: string | null) =>
     initialStrains.find((s) => s.id === id)?.name || 'Unknown';
   const getHarvestRoomName = (id?: string | null) =>
@@ -133,7 +133,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     }
   };
 
-  // Throttle scan events.
+  // Throttle scan events to avoid repeated processing.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
     if (isProcessingScan) return;
     setIsProcessingScan(true);
