@@ -53,7 +53,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // New state: record of last alert times per QR code.
+  // Record the last alert time for each QR code to avoid repeated alerts.
   const [lastAlerted, setLastAlerted] = useState<Record<string, number>>({});
 
   // Group the scanned bags.
@@ -65,12 +65,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     return total + price * group.bags.length;
   }, 0);
 
-  // Propagate overallTotal to the parent.
   useEffect(() => {
     onTotalChange(overallTotal);
   }, [overallTotal, onTotalChange]);
 
-  // Helper functions for display.
   const getStrainName = (id?: string | null) =>
     initialStrains.find((s) => s.id === id)?.name || 'Unknown';
   const getHarvestRoomName = (id?: string | null) =>
@@ -78,7 +76,6 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const getBagSizeName = (id?: string | null) =>
     initialBagSizes.find((b) => b.id === id)?.name || 'Unknown';
 
-  // Fetch bag details from Supabase.
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
     const { data, error } = await supabase
@@ -107,10 +104,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       };
 
       if (removalMode) {
-        // In removal mode, remove the bag if present.
-        setScannedBags((prev) => {
-          if (prev.some((b) => b.id === bag.id)) {
-            const newBags = prev.filter((b) => b.id !== bag.id);
+        // Remove bag in removal mode using functional update.
+        setScannedBags(prev => {
+          if (prev.some(b => b.id === bag.id)) {
+            const newBags = prev.filter(b => b.id !== bag.id);
             onBagsChange(newBags);
             alert('Bag removed.');
             return newBags;
@@ -120,27 +117,26 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
           }
         });
       } else {
-        // In normal mode, check if bag is already scanned.
-        if (scannedBags.some((b) => b.id === bag.id)) {
-          const now = Date.now();
-          // If this QR code was alerted within the last 2 seconds, skip alert.
-          if (lastAlerted[qrValue] && now - lastAlerted[qrValue] < 2000) {
-            return;
-          }
-          setLastAlerted((prev) => ({ ...prev, [qrValue]: now }));
-          alert('Bag already scanned.');
-        } else {
-          setScannedBags((prev) => {
+        // In normal mode, add the bag if not already scanned.
+        setScannedBags(prev => {
+          if (prev.some(b => b.id === bag.id)) {
+            const now = Date.now();
+            if (lastAlerted[qrValue] && now - lastAlerted[qrValue] < 2000) {
+              return prev;
+            }
+            setLastAlerted(prevAlerted => ({ ...prevAlerted, [qrValue]: now }));
+            alert('Bag already scanned.');
+            return prev;
+          } else {
             const newBags = [...prev, bag];
             onBagsChange(newBags);
             return newBags;
-          });
-        }
+          }
+        });
       }
     }
   };
 
-  // Throttle scan events to avoid repeated processing.
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
     if (isProcessingScan) return;
     setIsProcessingScan(true);
@@ -154,10 +150,9 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     setTimeout(() => setIsProcessingScan(false), 1000);
   };
 
-  // Remove an entire group.
   const removeGroup = (groupKey: string) => {
-    setScannedBags((prev) => {
-      const newBags = prev.filter((bag) => {
+    setScannedBags(prev => {
+      const newBags = prev.filter(bag => {
         const key = `${bag.harvest_room_id ?? 'none'}_${bag.strain_id ?? 'none'}_${bag.size_category_id ?? 'none'}_${bag.weight}`;
         return key !== groupKey;
       });
@@ -167,7 +162,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   };
 
   const handleGroupPriceChange = (groupKey: string, price: number) => {
-    setGroupPrices((prev) => ({ ...prev, [groupKey]: price }));
+    setGroupPrices(prev => ({ ...prev, [groupKey]: price }));
   };
 
   return (
@@ -175,16 +170,14 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       <h2 className="text-xl font-semibold mb-2">Grouped Bags & Pricing</h2>
       <div className="flex flex-wrap gap-4 mb-4">
         <button
-          onClick={() => setShowScanner((prev) => !prev)}
+          onClick={() => setShowScanner(prev => !prev)}
           className="bg-blue-500 text-white px-4 py-2 rounded"
         >
           {showScanner ? 'Hide Scanner' : 'Show Scanner'}
         </button>
         <button
-          onClick={() => setRemovalMode((prev) => !prev)}
-          className={`px-4 py-2 rounded ${
-            removalMode ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
-          }`}
+          onClick={() => setRemovalMode(prev => !prev)}
+          className={`px-4 py-2 rounded ${removalMode ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}
         >
           {removalMode ? 'Removal Mode: ON' : 'Removal Mode: OFF'}
         </button>
@@ -202,7 +195,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       )}
       {groups.length > 0 ? (
         <div>
-          {groups.map((group) => (
+          {groups.map(group => (
             <div key={group.key} className="border p-2 rounded mb-2 flex flex-col">
               <div className="flex justify-between items-center">
                 <div>
