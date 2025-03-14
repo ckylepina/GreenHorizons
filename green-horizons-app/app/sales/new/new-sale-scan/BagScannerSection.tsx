@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Scanner, type IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import type { BagRecord, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
@@ -53,7 +53,8 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
+  // Use a ref to track the last processed QR code.
+  const lastScannedCodeRef = useRef<string | null>(null);
 
   // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
@@ -77,9 +78,9 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
-    // If this QR code is the same as last scanned and we're not in removal mode, ignore it.
-    if (!removalMode && lastScannedCode === qrValue) return;
-    setLastScannedCode(qrValue);
+    // If the incoming code matches the last processed code (and we're not in removal mode), skip processing.
+    if (!removalMode && lastScannedCodeRef.current === qrValue) return;
+    lastScannedCodeRef.current = qrValue;
 
     const { data, error } = await supabase
       .from('bags')
@@ -131,8 +132,10 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         });
       }
     }
-    // Clear lastScannedCode after a delay so that repeated scanning is prevented.
-    setTimeout(() => setLastScannedCode(null), 2000);
+    // Clear lastScannedCode after 1 second.
+    setTimeout(() => {
+      lastScannedCodeRef.current = null;
+    }, 1000);
   };
 
   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
