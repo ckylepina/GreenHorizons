@@ -15,15 +15,56 @@ import {
   getAllTenants,
   getCurrentInventory,
   getDailyBags,
-  getMyBags, // Import the getMyBags query
+  getMyBags,
 } from '@/utils/supabase/queries';
 import AdminDashboardComponent from '@/components/Dashboard/AdminDashboardComponent';
 import SalesDashboard from '@/components/Dashboard/SalesDashboard';
-import SellerDashboard from '@/components/Dashboard/SellerDashboard';
 import InventoryManagementDashboard from '@/app/inventory-management/dashboard';
-import CEODashboard from '@/components/CEODashboard'; // New import for CEO dashboard
+import CEODashboard from '@/components/CEODashboard';
+import ChiefOfOperationsDashboard from '@/components/Dashboard/ChiefOfOperationsDashboard';
 import { BagRecord, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
-import { User, Profile, Employee, Seller, RoleRequest, SalesData } from '../types/dashboard';
+import {
+  User,
+  Profile,
+  Employee,
+  Seller,
+  RoleRequest,
+  SalesData,
+  DashboardSalesData,
+  // Add SalesRecord to your unified types in your /app/types/dashboard.ts if you prefer.
+} from '@/app/types/dashboard';
+
+// Define a type for CEO sales record.
+export interface SalesRecord extends SalesData {
+  date: string;
+  actual: number;
+  forecast: number;
+  inflow: number;
+  outflow: number;
+  otherFinancial: number;
+}
+
+// Transformation function that returns DashboardSalesData[].
+const transformSalesDataForDashboard = (rawSalesData: SalesData[]): DashboardSalesData[] => {
+  return rawSalesData.map((sale): DashboardSalesData => ({
+    ...sale, // preserves sale_date, total_amount, etc.
+    date: sale.sale_date,       // alias property
+    total: sale.total_amount,   // alias property
+  }));
+};
+
+// Transformation function for the CEO branch, now returning SalesRecord[].
+const transformSalesRecordsForCEO = (rawSalesData: SalesData[]): SalesRecord[] => {
+  return rawSalesData.map((sale): SalesRecord => ({
+    ...sale,
+    date: sale.sale_date,
+    actual: sale.total_amount,
+    forecast: sale.total_amount, // adjust logic as needed
+    inflow: 0,
+    outflow: 0,
+    otherFinancial: 0,
+  }));
+};
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -88,28 +129,10 @@ export default async function HomePage() {
   console.log('Employee role:', role);
 
   if (role === 'Chief Executive Officer') {
-    // For Chief Executive Officer, fetch sales data to drive the CEO dashboard.
-    type SaleWithDeal = SalesData & { deal?: unknown };
     const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.
-    const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
-      const saleCopy = { ...sale };
-      delete saleCopy.deal;
-      return saleCopy;
-    });
-
-    // Transform SalesData to match the SalesRecord type expected by CEODashboard.
-    const salesRecords = salesData.map((sale) => ({
-      date: sale.sale_date,        // Map sale_date to date
-      actual: sale.total_amount,   // Use total_amount as actual
-      forecast: sale.total_amount, // Example: using total_amount as forecast (adjust as needed)
-      inflow: 0,                   // Default or computed value for inflow
-      outflow: 0,                  // Default or computed value for outflow
-      otherFinancial: 0,           // Default value for otherFinancial
-    }));
-    
-    return <CEODashboard salesData={salesRecords} />;
+    const ceoSalesRecords = transformSalesRecordsForCEO(rawSalesData);
+    return <CEODashboard salesData={ceoSalesRecords} />;
   } else if (role === 'admin' || role === 'Super Admin') {
-    // Admin Dashboard
     let employees: Employee[] = [];
     let sellers: Seller[] = [];
     let dailyBags: BagRecord[] = [];
@@ -117,6 +140,7 @@ export default async function HomePage() {
     let strains: Strain[] = [];
     let bagSizes: BagSize[] = [];
     let harvestRooms: HarvestRoom[] = [];
+    let rawSalesData: SalesData[] = [];
 
     try {
       const rawEmployees = (await getAllEmployees(supabase)) as unknown[];
@@ -157,18 +181,19 @@ export default async function HomePage() {
 
       sellers = await getSellers(supabase);
       dailyBags = await getDailyBags(supabase);
-      // Use getMyBags to get the bag data with weight.
       inventoryBags = await getMyBags(supabase, employee.id);
       strains = await getStrains(supabase);
       bagSizes = await getBagSizeCategories(supabase);
       harvestRooms = await getHarvestRooms(supabase);
+      rawSalesData = await getSales(supabase, {});
     } catch (error) {
       console.error('Error fetching admin dashboard data:', error);
     }
 
+    const adminSalesRecords: DashboardSalesData[] = transformSalesDataForDashboard(rawSalesData);
+
     return (
       <AdminDashboardComponent
-        user={user}
         profile={profile}
         employees={employees}
         sellers={sellers}
@@ -179,19 +204,17 @@ export default async function HomePage() {
         serverHarvestRooms={harvestRooms}
         pendingRoleRequests={roleRequests}
         tenants={tenants}
+        serverSalesData={adminSalesRecords}
       />
     );
   } else if (role === 'Accounting Department') {
-    type SaleWithDeal = SalesData & { deal?: unknown };
     const rawSalesData = await getSales(supabase, {});
-    const salesData: SalesData[] = rawSalesData.map((sale: SaleWithDeal) => {
-      const saleCopy = { ...sale };
-      delete saleCopy.deal;
-      return saleCopy;
-    });
-    return <SalesDashboard user={user} employee={employee} salesData={salesData} />;
+    const accountingSalesRecords: DashboardSalesData[] = transformSalesDataForDashboard(rawSalesData);
+    return <SalesDashboard salesData={accountingSalesRecords} />;
   } else if (role === 'Chief Of Operations') {
-    return <SellerDashboard user={user} />;
+    const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.
+    const cooSalesRecords: DashboardSalesData[] = transformSalesDataForDashboard(rawSalesData);
+    return <ChiefOfOperationsDashboard salesData={cooSalesRecords} />;
   } else if (role === 'Inventory Management') {
     let inventoryBags: BagRecord[] = [];
     let strains: Strain[] = [];

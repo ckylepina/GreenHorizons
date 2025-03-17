@@ -18,7 +18,7 @@ interface InventoryGroupProps {
   group: GroupedInventory;
   expanded: boolean;
   onToggle: () => void;
-  onPrint: (bagsToPrint: BagRecord[]) => void; // Updated to accept a parameter
+  onPrint: (bagsToPrint: BagRecord[]) => void;
   editing: boolean;
   onEditToggle: () => void;
   onSaveGroup: () => void;
@@ -49,18 +49,27 @@ export const InventoryGroup: React.FC<InventoryGroupProps> = ({
   editedGroupParams,
   onGroupParamChange,
 }) => {
-  // Local handler: now calls onPrint with the provided bags array.
+  // Local handler: calls onPrint with the provided bags array.
   const handlePrint = (bags: BagRecord[]) => {
     console.log('Printing labels for bags:', bags);
     onPrint(bags);
   };
+
+  // Determine if the content should be shown.
+  // When editing, the group content is always shown regardless of the expanded state.
+  const showContent = expanded || editing;
 
   return (
     <div className="border rounded mb-4">
       {/* Group Header */}
       <div
         className="p-4 cursor-pointer flex justify-between items-center"
-        onClick={onToggle}
+        onClick={() => {
+          // Only toggle expansion if not in editing mode.
+          if (!editing) {
+            onToggle();
+          }
+        }}
       >
         <div>
           <p className="text-lg font-semibold">
@@ -106,10 +115,10 @@ export const InventoryGroup: React.FC<InventoryGroupProps> = ({
         </div>
       </div>
       {/* Group Content */}
-      {expanded && (
+      {showContent && (
         <div className="p-4" onClick={(e) => e.stopPropagation()}>
           {editing ? (
-            // Group edit mode view: table with dropdowns for group parameters.
+            // Edit mode view: table with dropdowns for group parameters.
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -192,7 +201,7 @@ export const InventoryGroup: React.FC<InventoryGroupProps> = ({
               </table>
             </div>
           ) : (
-            // Normal expanded group view: display table of individual bags.
+            // Normal expanded view: display table of individual bags.
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>

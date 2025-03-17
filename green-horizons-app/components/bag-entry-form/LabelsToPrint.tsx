@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useQRCode } from 'next-qrcode';
+import Image from 'next/image';
 import { BagRecord, Strain, BagSize, HarvestRoom } from './types';
 
 interface LabelsToPrintProps {
@@ -82,22 +83,15 @@ export default function LabelsToPrint({
                 paddingRight: '0.05in',
               }}
             >
-              <div>
-                {getHarvestRoomName(bag.harvest_room_id)}
-              </div>
-              <div>
-                {getStrainName(bag.strain_id)}
-              </div>
-              <div>
-                {getBagSizeName(bag.size_category_id)}
-              </div>
-              <div>
-              {bag.weight}lbs
-              </div>
+              <div>{getHarvestRoomName(bag.harvest_room_id)}</div>
+              <div>{getStrainName(bag.strain_id)}</div>
+              <div>{getBagSizeName(bag.size_category_id)}</div>
+              <div>{bag.weight}lbs</div>
             </div>
             {/* Right side: QR Code */}
             <div
               style={{
+                position: 'relative',
                 width: '1in',
                 height: '1in',
                 display: 'flex',
@@ -108,7 +102,17 @@ export default function LabelsToPrint({
               }}
             >
               {bag.qr_code ? (
-                <QRImage text={bag.qr_code} options={{ scale: 1 }} />
+                bag.qr_code.startsWith('data:') || bag.qr_code.startsWith('http') ? (
+                  // Using Next.js Image for optimized rendering
+                  <Image
+                    src={bag.qr_code}
+                    alt="QR Code"
+                    layout="fill"
+                    objectFit="contain"
+                  />
+                ) : (
+                  <QRImage text={bag.qr_code} options={{ scale: 1 }} />
+                )
               ) : (
                 <span style={{ fontSize: '8pt' }}>No QR Code</span>
               )}

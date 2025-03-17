@@ -1078,6 +1078,10 @@ export const getSales = cache(
       throw new Error(`Failed to fetch sales: ${error.message}`);
     }
 
+    if (!data) {
+      return [];
+    }
+
     // Construct a SalesData object for each sale.
     return (data as any[]).map((sale) => {
       // If customer is returned as an array, pick the first item.

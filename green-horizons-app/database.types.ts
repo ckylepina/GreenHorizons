@@ -859,6 +859,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sales_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sellers: {
@@ -939,7 +946,7 @@ export type Database = {
           harvest_room_id: string
           id: string
           is_active: boolean | null
-          name: Database["public"]["Enums"]["strain_type"]
+          name: string
           updated_at: string | null
         }
         Insert: {
@@ -948,7 +955,7 @@ export type Database = {
           harvest_room_id: string
           id?: string
           is_active?: boolean | null
-          name: Database["public"]["Enums"]["strain_type"]
+          name: string
           updated_at?: string | null
         }
         Update: {
@@ -957,7 +964,7 @@ export type Database = {
           harvest_room_id?: string
           id?: string
           is_active?: boolean | null
-          name?: Database["public"]["Enums"]["strain_type"]
+          name?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -1053,17 +1060,6 @@ export type Database = {
         | "returning"
         | "missing"
       sale_status: "pending" | "completed" | "cancelled"
-      strain_type:
-        | "WHITE RUNTZ"
-        | "ITS IT X PLUTO"
-        | "LEMON CHERRY GELATO"
-        | "SHARPIE"
-        | "RANDO RUNTZ"
-        | "BACCIO GELATO"
-        | "EL CHIVO"
-        | "BLACKBERRY MOONSHINE"
-        | "TROPICANA GELATO"
-        | "GEORGIA PIE X GASTRO POP"
       transaction_type: "sale" | "withdrawal" | "deposit" | "refund" | "pending"
     }
     CompositeTypes: {

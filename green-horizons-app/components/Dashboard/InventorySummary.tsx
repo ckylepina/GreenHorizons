@@ -20,16 +20,19 @@ export default function InventorySummary({
   serverBagSizes,
   serverHarvestRooms,
 }: InventorySummaryProps) {
-  // Filter controls state (single-value selections)
+  // Filter controls state
   const [selectedHarvestRoom, setSelectedHarvestRoom] = useState<string>('');
   const [selectedStrain, setSelectedStrain] = useState<string>('');
   const [selectedBagSize, setSelectedBagSize] = useState<string>('');
   const [filterToday, setFilterToday] = useState<boolean>(false);
 
-  // State for toggling the visibility of the filter controls.
+  // State for toggling filter controls
   const [showFilters, setShowFilters] = useState<boolean>(false);
 
-  // State for group editing: which group is currently being edited.
+  // NEW: State to track which group is expanded (by key)
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
+
+  // State for group editing: which group is currently being edited
   const [editedGroup, setEditedGroup] = useState<GroupedInventory | null>(null);
   const [editedGroupParams, setEditedGroupParams] = useState({
     strain: '',
@@ -37,30 +40,30 @@ export default function InventorySummary({
     harvestRoom: '',
   });
 
-  // Compute available harvest rooms from inventory.
+  // Compute available harvest rooms from inventory
   const availableHarvestRooms = serverHarvestRooms.filter((room) =>
     bags.some((bag) => bag.current_status === 'in_inventory' && bag.harvest_room_id === room.id)
   );
 
-  // Sort available harvest rooms descending by numeric value extracted from the name (e.g. "H11" becomes 11).
+  // Sort available harvest rooms descending by numeric value extracted from the name
   const sortedAvailableHarvestRooms = [...availableHarvestRooms].sort((a, b) => {
     const aNum = parseInt(a.name.replace(/\D/g, '')) || 0;
     const bNum = parseInt(b.name.replace(/\D/g, '')) || 0;
     return bNum - aNum;
   });
 
-  // Get today's date (with time zeroed out).
+  // Get today's date (time zeroed out)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Filter bags based on controls.
+  // Filter bags based on controls
   const filteredBags = bags.filter((bag) => {
     if (bag.current_status !== 'in_inventory') return false;
     if (selectedHarvestRoom && bag.harvest_room_id !== selectedHarvestRoom) return false;
     if (selectedStrain && bag.strain_id !== selectedStrain) return false;
     if (selectedBagSize && bag.size_category_id !== selectedBagSize) return false;
     if (filterToday) {
-      if (!bag.created_at) return false; // Skip if created_at is null.
+      if (!bag.created_at) return false;
       const bagDate = new Date(bag.created_at);
       bagDate.setHours(0, 0, 0, 0);
       if (bagDate.getTime() !== today.getTime()) return false;
@@ -130,7 +133,6 @@ export default function InventorySummary({
     `);
     printWindow.document.close();
 
-    // Once the new window loads, render the LabelsToPrint component into it.
     printWindow.onload = () => {
       const printRootDiv = printWindow.document.getElementById('print-root');
       if (printRootDiv) {
@@ -143,11 +145,11 @@ export default function InventorySummary({
             serverHarvestRooms={serverHarvestRooms}
           />
         );
-        // Delay to ensure the component has rendered before printing.
+        // Increase delay to allow QR codes to fully render (try 5000ms)
         setTimeout(() => {
           printWindow.print();
           printWindow.close();
-        }, 1000);
+        }, 5000);
       }
     };
   };
@@ -161,13 +163,14 @@ export default function InventorySummary({
       bagSize: group.bagSizeName,
       harvestRoom: group.harvestRoomName,
     });
+    // Ensure the group is expanded when editing.
+    setExpandedGroupKey(group.key);
   };
 
   // Handler for saving group changes.
   const handleSaveGroup = () => {
     console.log('Save group changes', editedGroup, editedGroupParams);
-    // In a real app, update the underlying data (e.g., via an API call or state update).
-    // For now, simply clear the editing state.
+    // (Update logic would go here.)
     setEditedGroup(null);
     setEditedGroupParams({
       strain: '',
@@ -199,7 +202,6 @@ export default function InventorySummary({
       </div>
       {showFilters && (
         <FilterControls
-          // Pass only available harvest rooms, sorted descending by numeric value.
           serverHarvestRooms={sortedAvailableHarvestRooms}
           serverStrains={serverStrains}
           serverBagSizes={serverBagSizes}
@@ -223,12 +225,15 @@ export default function InventorySummary({
             <InventoryGroup
               key={group.key}
               group={group}
-              expanded={editedGroup?.key === group.key}
+              expanded={
+                expandedGroupKey === group.key || (editedGroup?.key === group.key)
+              }
               onToggle={() => {
-                // Toggle expansion (if not in edit mode)
-                if (editedGroup?.key !== group.key) {
-                  setEditedGroup(null);
-                }
+                // Only allow toggle if this group is not in edit mode.
+                if (editedGroup?.key === group.key) return;
+                setExpandedGroupKey((prev) =>
+                  prev === group.key ? null : group.key
+                );
               }}
               onPrint={() => handlePrintGroup(group.bags)}
               editing={editedGroup?.key === group.key}
@@ -244,7 +249,6 @@ export default function InventorySummary({
                   : { strain: '', bagSize: '', harvestRoom: '' }
               }
               onGroupParamChange={(field, value) => {
-                console.log(`Group parameter ${field} changed to ${value}`);
                 setEditedGroupParams((prev) => ({
                   ...prev,
                   [field]: value,
@@ -254,6 +258,22 @@ export default function InventorySummary({
           ))}
         </div>
       )}
+
+      {/* Offscreen printable container – note: instead of "hidden" we use offscreen styles */}
+      {groups.map((group) => (
+        <div
+          key={`printable-${group.key}`}
+          id={`printable-area-${group.key}`}
+          style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}
+        >
+          <LabelsToPrint
+            bags={group.bags}
+            serverStrains={serverStrains}
+            serverBagSizes={serverBagSizes}
+            serverHarvestRooms={serverHarvestRooms}
+          />
+        </div>
+      ))}
     </div>
   );
 }

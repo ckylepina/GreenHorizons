@@ -6,20 +6,25 @@ import Link from 'next/link';
 export default function QuickActions() {
   return (
     <section className="mb-8">
-      <h2 className="text-2xl font-semibold mb-2">Quick Actions</h2>
-      <div className="flex flex-wrap gap-4">
-        <Link
-          href="/bags/new"
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        >
-          Create New Bag Entry
+      <h2 className="text-2xl font-semibold mb-4">Quick Actions</h2>
+      <div className="flex flex-wrap gap-6">
+        <Link href="/add-strain" className="flex items-center gap-2 hover:underline">
+          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+            <span className="text-xl font-bold text-white">+</span>
+          </div>
+          <span className="text-lg font-bold">Strains</span>
         </Link>
-        {/* New Quick Action for the new sale scan page */}
-        <Link
-          href="/sales/new/new-sale-scan"
-          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-orange-600"
-        >
-          New Sale Scan
+        <Link href="/bags/new" className="flex items-center gap-2 hover:underline">
+          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+            <span className="text-xl font-bold text-white">+</span>
+          </div>
+          <span className="text-lg font-bold">Bags</span>
+        </Link>
+        <Link href="/sales/new/new-sale-scan" className="flex items-center gap-2 hover:underline">
+          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+            <span className="text-xl font-bold text-white">+</span>
+          </div>
+          <span className="text-lg font-bold">Sale</span>
         </Link>
       </div>
     </section>
