@@ -1,10 +1,19 @@
-// /app/quick-actions/add-strain/page.tsx (server component)
+// /app/quick-actions/add-strain/page.tsx (Server Component)
 import { createClient } from '@/utils/supabase/server';
-import { getHarvestRooms } from '@/utils/supabase/queries';
+import { getHarvestRooms, getCurrentUser } from '@/utils/supabase/queries';
+import { redirect } from 'next/navigation';
 import AddStrainForm from '@/components/AddStrainForm';
 
 export default async function AddStrainPage() {
   const supabase = await createClient();
+
+  // Check if the user is logged in
+  const rawUser = await getCurrentUser(supabase);
+  if (!rawUser) {
+    redirect('/sign-in');
+    return null;
+  }
+
   const harvestRooms = await getHarvestRooms(supabase);
 
   // Compute the next available harvest room name.

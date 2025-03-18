@@ -35,8 +35,8 @@ export default function AdminDashboardComponent({
   tenants,
   serverSalesData,
 }: AdminDashboardComponentProps) {
-  // Manage active tab state.
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'harvestSummary' | 'salesReports'>('overview');
+  // Add an 'inventory' tab to the type union.
+  const [selectedTab, setSelectedTab] = useState<'overview' | 'inventory' | 'harvestSummary' | 'salesReports'>('overview');
 
   const renderTabs = () => (
     <div className="mb-4 border-b">
@@ -48,6 +48,14 @@ export default function AdminDashboardComponent({
           onClick={() => setSelectedTab('overview')}
         >
           Overview
+        </button>
+        <button
+          className={`py-2 px-4 ${
+            selectedTab === 'inventory' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'
+          }`}
+          onClick={() => setSelectedTab('inventory')}
+        >
+          Inventory
         </button>
         <button
           className={`py-2 px-4 ${
@@ -84,16 +92,18 @@ export default function AdminDashboardComponent({
             <h2 className="text-2xl font-semibold mb-2">Pending Role Requests</h2>
             <PendingRoleRequests initialRequests={pendingRoleRequests} tenants={tenants} />
           </section>
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-2">Current Inventory</h2>
-            <InventorySummary
-              bags={inventoryBags}
-              serverStrains={serverStrains}
-              serverBagSizes={serverBagSizes}
-              serverHarvestRooms={serverHarvestRooms}
-            />
-          </section>
         </>
+      )}
+      {selectedTab === 'inventory' && (
+        <section className="mb-8">
+          <h2 className="text-2xl font-semibold mb-2">Current Inventory</h2>
+          <InventorySummary
+            bags={inventoryBags}
+            serverStrains={serverStrains}
+            serverBagSizes={serverBagSizes}
+            serverHarvestRooms={serverHarvestRooms}
+          />
+        </section>
       )}
       {selectedTab === 'harvestSummary' && (
         <section className="mb-8">

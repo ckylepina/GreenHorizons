@@ -5,11 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import ColorPicker from './ColorPicker';
+import { Database } from '@/database.types';
 
-interface HarvestRoom {
-  id: string;
-  name: string;
-}
+// Use the DB type for a harvest room.
+type HarvestRoom = Database['public']['Tables']['harvest_rooms']['Row'];
 
 interface StrainEntry {
   strainName: string;
@@ -52,7 +51,9 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ harvestRooms, newHarvestR
   const router = useRouter();
 
   const sortedHarvestRooms = useMemo(() => {
-    return [...harvestRooms].sort((a, b) => {
+    // Initialize safeHarvestRooms inside useMemo so it remains stable.
+    const safeHarvestRooms = Array.isArray(harvestRooms) ? harvestRooms : [];
+    return [...safeHarvestRooms].sort((a, b) => {
       const numA = parseInt(a.name.replace(/[^\d]/g, ''), 10);
       const numB = parseInt(b.name.replace(/[^\d]/g, ''), 10);
       return numB - numA;
@@ -101,22 +102,24 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ harvestRooms, newHarvestR
 
     for (const entry of strainEntries) {
       if (!entry.strainName.trim()) continue;
-      const colors = [entry.color1, entry.color2];
+      // Serialize the colors array into a JSON string since the DB expects a string.
+      const colors = JSON.stringify([entry.color1, entry.color2]);
       const { error: strainError } = await supabase
         .from('strains')
-        .insert([{ name: entry.strainName, harvest_room_id: harvestRoomId, colors }]);
+        .insert([{ name: entry.strainName, harvest_room_id: harvestRoomId, colors }])
+        .select();
       if (strainError) {
         console.error(`Error adding strain ${entry.strainName}:`, strainError);
       }
     }
 
     alert('Strains added successfully!');
-    router.push('/dashboard');
+    router.push('/');
   };
 
   return (
     <div className="max-w-2xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Add New Strains to Harvest Room</h1>
+      <h1 className="text-2xl font-bold mb-4">+ New Strains to Harvest Room</h1>
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Harvest Room Section */}
         <div>
@@ -211,7 +214,7 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ harvestRooms, newHarvestR
         </button>
       </form>
       <div className="mt-4">
-        <Link href="/dashboard" className="text-blue-500 hover:underline">
+        <Link href="/" className="text-blue-500 hover:underline">
           Back to Dashboard
         </Link>
       </div>

@@ -941,6 +941,7 @@ export type Database = {
       }
       strains: {
         Row: {
+          colors: string | null
           created_at: string | null
           description: string | null
           harvest_room_id: string
@@ -950,6 +951,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          colors?: string | null
           created_at?: string | null
           description?: string | null
           harvest_room_id: string
@@ -959,6 +961,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          colors?: string | null
           created_at?: string | null
           description?: string | null
           harvest_room_id?: string
