@@ -1041,7 +1041,17 @@ export type Database = {
           p_phone: string
         }
         Returns: {
+          address: string | null
+          business_name: string
+          created_at: string | null
+          email: string | null
+          first_name: string
           id: string
+          last_name: string
+          license_number: string
+          phone: string | null
+          tenant_id: string
+          updated_at: string | null
         }[]
       }
       create_reserve_request: {
