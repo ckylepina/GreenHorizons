@@ -1,21 +1,40 @@
-// /app/sales/new/page.tsx (Server Component)
 import { createClient } from '@/utils/supabase/server';
 import NewSaleScanClient from './NewSaleScanClient';
 import { redirect } from 'next/navigation';
-import { getCurrentUser, getStrains, getBagSizeCategories, getHarvestRooms } from '@/utils/supabase/queries';
+import {
+  getCurrentUser,
+  getProfileByUserId,
+  getProfileEmployeeRecord,
+  getStrains,
+  getBagSizeCategories,
+  getHarvestRooms,
+} from '@/utils/supabase/queries';
 
 export default async function NewSaleScanPage() {
-  // Create a server-specific Supabase client (using headers/cookies)
   const supabase = await createClient();
 
-  // Check if the user is logged in
+  // 1. Get the current user.
   const rawUser = await getCurrentUser(supabase);
   if (!rawUser) {
     redirect('/sign-in');
     return null;
   }
 
-  // Use your query functions to fetch lookup data
+  // 2. Get the profile data using user.id.
+  const profile = await getProfileByUserId(supabase, rawUser.id);
+  if (!profile) {
+    redirect('/sign-in');
+    return null;
+  }
+
+  // 3. Get the employee record using profile.id.
+  const employee = await getProfileEmployeeRecord(supabase, profile.id);
+  if (!employee) {
+    redirect('/request-role');
+    return null;
+  }
+
+  // 4. Fetch lookup data.
   const strains = await getStrains(supabase);
   const bagSizes = await getBagSizeCategories(supabase);
   const harvestRooms = await getHarvestRooms(supabase);
@@ -25,6 +44,7 @@ export default async function NewSaleScanPage() {
       initialStrains={strains ?? []}
       initialBagSizes={bagSizes ?? []}
       initialHarvestRooms={harvestRooms ?? []}
+      currentEmployeeId={employee.id} // Pass the employee id to NewSaleScanClient
     />
   );
 }
