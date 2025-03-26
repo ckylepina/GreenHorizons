@@ -104,6 +104,17 @@ const Invoice: React.FC<InvoiceProps> = ({
               padding: 4px 8px;
               text-align: left;
             }
+            /* Ensure images maintain aspect ratio */
+            img {
+              max-width: 100%;
+              height: auto;
+            }
+            /* Force header layout */
+            #invoice-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
           </style>
         </head>
         <body>
@@ -120,11 +131,11 @@ const Invoice: React.FC<InvoiceProps> = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 bg-white">
+    <div className="max-w-3xl mx-auto p-8 bg-white text-black">
       {/* Invoice content wrapper */}
       <div id="invoice-content">
         {/* Header: Invoice title on the left, logo on the right */}
-        <div className="flex justify-between items-center mb-8">
+        <div id="invoice-header" className="flex justify-between items-center mb-8">
           <h1 className="text-4xl font-bold">Invoice</h1>
           <Image
             src="/greenhorizonsicon.png"
@@ -159,12 +170,12 @@ const Invoice: React.FC<InvoiceProps> = ({
           <table className="min-w-full">
             <thead>
               <tr>
-                <th className="border p-2">Harvest Room</th>
+                <th className="border p-2">Harvest</th>
                 <th className="border p-2">Strain</th>
-                <th className="border p-2">Bag Size</th>
-                <th className="border p-2">Weight</th>
+                <th className="border p-2">Type</th>
+                <th className="border p-2">lbs</th>
                 <th className="border p-2">Items</th>
-                <th className="border p-2">Price per Bag</th>
+                <th className="border p-2">$ per Bag</th>
                 <th className="border p-2">Subtotal</th>
               </tr>
             </thead>

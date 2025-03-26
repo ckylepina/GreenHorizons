@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import CustomerSection from './CustomerSection';
 import BagScannerSection from './BagScannerSection';
 import { useRouter } from 'next/navigation';
 import type { BagRecord, Customer, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
 import type { Database } from '@/database.types';
+import SignatureCanvas from 'react-signature-canvas';
+import { useTheme } from 'next-themes';
 
 // Props for the client component.
 interface NewSaleScanClientProps {
@@ -25,6 +27,7 @@ export type CustomerDetails = {
   business_name: string;
   license_number: string;
   phone: string;
+  drivers_license: string; // holds the driver's license public URL
 };
 
 // Local type for RPC parameters (for creating a customer).
@@ -36,6 +39,7 @@ interface CreateCustomerParams {
   p_email: string;
   p_phone: string;
   p_tenant_id: string;
+  p_drivers_license: string;
 }
 
 export default function NewSaleScanClient({
@@ -46,7 +50,9 @@ export default function NewSaleScanClient({
   tenantId,
 }: NewSaleScanClientProps) {
   const router = useRouter();
-
+  const { theme, resolvedTheme } = useTheme();
+  const currentTheme = theme === 'system' ? resolvedTheme : theme;
+  
   // --- Customer State ---
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [searchTerm, setSearchTerm] = useState('');
@@ -58,14 +64,47 @@ export default function NewSaleScanClient({
     license_number: '',
     email: '',
     phone: '',
+    drivers_license: '',
   });
 
   // --- Bag Scanner State ---
   const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
   const [saleTotal, setSaleTotal] = useState<number>(0);
 
+  // --- Digital Signature State ---
+  const signaturePadRef = useRef<SignatureCanvas>(null);
+  const [uploadingSignature, setUploadingSignature] = useState<boolean>(false);
+
   const handleNewCustomerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewCustomer({ ...newCustomer, [e.target.name]: e.target.value });
+  };
+
+  // Function to upload the digital signature from the canvas.
+  const handleUploadSignature = async (): Promise<string | null> => {
+    if (!signaturePadRef.current || signaturePadRef.current.isEmpty()) {
+      alert("Please provide your signature.");
+      return null;
+    }
+    setUploadingSignature(true);
+    try {
+      const dataUrl = signaturePadRef.current.getTrimmedCanvas().toDataURL('image/png');
+      const blob = await (await fetch(dataUrl)).blob();
+      const fileName = `signature-${Date.now()}.png`;
+      const filePath = fileName;
+      const { error } = await supabase.storage.from('signatures').upload(filePath, blob);
+      if (error) throw error;
+      const { data: publicUrlData } = await supabase.storage.from('signatures').getPublicUrl(filePath);
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      alert((error as Error).message);
+      return null;
+    } finally {
+      setUploadingSignature(false);
+    }
+  };
+
+  const handleClearSignature = () => {
+    signaturePadRef.current?.clear();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,6 +121,10 @@ export default function NewSaleScanClient({
         alert('Please fill in required customer details for a new customer.');
         return;
       }
+      if (!newCustomer.drivers_license) {
+        alert('Please upload your driver’s license photo.');
+        return;
+      }
     }
     if (scannedBags.length === 0) {
       alert('Please scan at least one bag.');
@@ -91,6 +134,10 @@ export default function NewSaleScanClient({
       alert('Please set a price per bag for all groups.');
       return;
     }
+
+    // --- Step: Upload Signature ---
+    const signaturePublicUrl = await handleUploadSignature();
+    if (!signaturePublicUrl) return;
 
     // --- Step 1: Create or Retrieve Customer ---
     let customerId: string | null = null;
@@ -105,6 +152,7 @@ export default function NewSaleScanClient({
         p_email: newCustomer.email,
         p_phone: newCustomer.phone,
         p_tenant_id: tenantId,
+        p_drivers_license: newCustomer.drivers_license,
       };
       console.log("Creating customer with params:", params);
       const { data, error } = await supabase.rpc<
@@ -131,7 +179,7 @@ export default function NewSaleScanClient({
       return;
     }
 
-    // --- Step 2: Insert Sale Record ---
+    // --- Step 2: Insert Sale Record (including signature) ---
     const saleDate = new Date().toISOString();
     const { data: saleData, error: saleError } = await supabase
       .from('sales')
@@ -142,6 +190,7 @@ export default function NewSaleScanClient({
         tenant_id: tenantId,
         total_amount: saleTotal,
         cash_transaction_id: null,
+        signature_url: signaturePublicUrl,
       }])
       .select();
     if (saleError) {
@@ -212,7 +261,6 @@ export default function NewSaleScanClient({
     }
 
     // --- Step 7: Redirect to Invoice Page ---
-    // Redirect to a separate invoice page using the sale ID.
     router.push(`/invoice/${saleRecord.id}`);
   };
 
@@ -224,7 +272,6 @@ export default function NewSaleScanClient({
         setMode={setMode}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
-        // Implement searchResults inside CustomerSection.
         selectedCustomer={selectedCustomer}
         setSelectedCustomer={setSelectedCustomer}
         newCustomer={newCustomer}
@@ -237,12 +284,26 @@ export default function NewSaleScanClient({
         onBagsChange={setScannedBags}
         onTotalChange={setSaleTotal}
       />
+      {/* Digital Signature Section */}
+      <div className="border p-4 rounded shadow">
+        <h2 className="text-lg font-semibold mb-2">Digital Signature (Required)</h2>
+        <SignatureCanvas
+          ref={signaturePadRef}
+          penColor={currentTheme === 'dark' ? 'white' : 'black'}
+          canvasProps={{ className: "w-full h-40 border rounded bg-transparent" }}
+        />
+        <div className="mt-2 flex space-x-2">
+          <button onClick={handleClearSignature} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
+            Clear Signature
+          </button>
+        </div>
+      </div>
       <button
         type="submit"
         onClick={handleSubmit}
         className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
       >
-        Submit Sale
+        {uploadingSignature ? 'Uploading Signature...' : 'Submit Sale'}
       </button>
     </div>
   );
