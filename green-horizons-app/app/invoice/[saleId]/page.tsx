@@ -7,7 +7,15 @@ interface SaleItem {
   price: number;
 }
 
-export default async function InvoicePage({ params }: { params: { saleId: string } }) {
+// Define PageProps with synchronous params
+export interface PageProps {
+  params: {
+    saleId: string;
+  };
+  searchParams?: { [key: string]: string | string[] };
+}
+
+export default async function InvoicePage({ params }: PageProps) {
   const supabase = await createClient();
   const saleId = params.saleId;
 
@@ -40,7 +48,7 @@ export default async function InvoicePage({ params }: { params: { saleId: string
 
   // Get bag IDs from sale_items using the SaleItem type.
   const saleItems = saleData.sale_items as SaleItem[] | undefined;
-  const bagIds = saleItems ? saleItems.map(item => item.bag_id) : [];
+  const bagIds = saleItems ? saleItems.map((item) => item.bag_id) : [];
 
   // Fetch bag details for these IDs.
   const { data: bags, error: bagsError } = await supabase
