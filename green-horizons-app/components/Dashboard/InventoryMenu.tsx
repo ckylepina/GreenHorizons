@@ -83,7 +83,7 @@ const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSize
           height={175}
           className="object-contain"
           unoptimized
-          style={{ filter: 'drop-shadow(0 0 5px white)' }}
+          style={{ filter: 'drop-shadow(0 0 2px white)' }}
         />
       </div>
       {/* Container for PDF export */}
