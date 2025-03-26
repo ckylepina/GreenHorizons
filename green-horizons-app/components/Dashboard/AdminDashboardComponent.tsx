@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import QuickActions from '@/components/Dashboard/quick-actions/QuickActions';
 import EmployeesSection from '@/components/Dashboard/EmployeeSection';
 import InventorySummary from '@/components/Dashboard/InventorySummary';
+import Menu from './InventoryMenu';
 import PendingRoleRequests from './PendingRoleRequest/PendingRoleRequest';
 import HarvestSummaryReport from '../Reports/HarvestSummaryReport';
 import SalesReports from '../Reports/SalesReport';
@@ -43,7 +44,9 @@ export default function AdminDashboardComponent({
     <div className="mb-4 md:hidden">
       <select
         value={selectedTab}
-        onChange={(e) => setSelectedTab(e.target.value as 'overview' | 'inventory' | 'harvestSummary' | 'salesReports')}
+        onChange={(e) =>
+          setSelectedTab(e.target.value as 'overview' | 'inventory' | 'harvestSummary' | 'salesReports')
+        }
         className="w-full p-2 border rounded-md text-sm"
       >
         <option value="overview">Overview</option>
@@ -96,6 +99,12 @@ export default function AdminDashboardComponent({
       {renderTabsHorizontal()}
       {selectedTab === 'overview' && (
         <>
+          {/* Render the Menu component at the top */}
+          <Menu
+            inventoryBags={inventoryBags}
+            serverStrains={serverStrains}
+            serverBagSizes={serverBagSizes}
+          />
           <QuickActions />
           <EmployeesSection employees={employees} />
           <section className="mb-8">
