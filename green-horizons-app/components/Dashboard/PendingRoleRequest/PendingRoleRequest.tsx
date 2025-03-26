@@ -76,46 +76,47 @@ export default function PendingRoleRequestsClient({
     <div className="space-y-8">
       {Object.keys(groupedRequests).map((role) => (
         <div key={role}>
-          <h3 className="text-2xl font-semibold mb-4">{role}</h3>
-          <ul className="space-y-6">
+          <h3 className="text-xl md:text-2xl font-semibold mb-4">{role}</h3>
+          <ul className="space-y-4">
             {groupedRequests[role].map((request) => {
               const profile = request.profiles[0]; // Use first profile
               const roleData = request.roles[0]; // Use first role
               return (
-                <li key={request.id} className="p-4 border rounded-md shadow-md">
-                  <div className="flex justify-between items-center">
-                    <div className="flex flex-col space-y-2">
-                      <div>
-                        <strong>User:</strong> {profile?.first_name} {profile?.last_name}
+                <li key={request.id} className="p-3 border rounded-md shadow-md">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
+                    {/* Employee Details */}
+                    <div className="flex flex-col space-y-1">
+                      <div className="text-sm">
+                        <strong>User:</strong>{' '}
+                        {profile ? `${profile.first_name} ${profile.last_name}` : 'No Name'}
                       </div>
-                      <div>
-                        <strong>Requested Role:</strong> {roleData?.name}
+                      <div className="text-sm">
+                        <strong>Requested Role:</strong> {roleData ? roleData.name : 'No Role'}
                       </div>
-                      <div>
+                      <div className="text-sm">
                         <strong>Status:</strong> {request.status}
                       </div>
                     </div>
-                    <div className="flex space-x-4">
-                      <div className="flex flex-col space-y-2">
-                        {/* Tenant Dropdown */}
-                        <select
-                          className="p-2 border border-gray-300 rounded-md w-40"
-                          id={`tenant-select-${request.id}`}
-                        >
-                          <option value="">-- Select Tenant --</option>
-                          {tenants.map((tenant) => (
-                            <option key={tenant.id} value={tenant.id}>
-                              {tenant.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        {/* Action Buttons */}
+                    {/* Action Area */}
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4 w-full md:w-auto">
+                      {/* Tenant Dropdown */}
+                      <select
+                        className="p-2 border border-gray-300 rounded-md w-full md:w-40 text-sm"
+                        id={`tenant-select-${request.id}`}
+                      >
+                        <option value="">-- Select Tenant --</option>
+                        {tenants.map((tenant) => (
+                          <option key={tenant.id} value={tenant.id}>
+                            {tenant.name}
+                          </option>
+                        ))}
+                      </select>
+                      {/* Action Buttons */}
+                      <div className="flex flex-col md:flex-row gap-2 w-full">
                         {request.status === 'pending' ? (
                           <>
                             <button
-                              className="bg-blue-500 text-white px-4 py-2 rounded-md w-32"
+                              className="bg-blue-500 text-white px-3 py-1 rounded-md w-full md:w-32 text-sm"
                               onClick={() =>
                                 handleApprove(
                                   profile?.id || '',
@@ -129,12 +130,18 @@ export default function PendingRoleRequestsClient({
                             >
                               {isSubmitting ? 'Submitting...' : 'Approve'}
                             </button>
-                            <button className="bg-red-500 text-white px-4 py-2 rounded-md w-32" disabled={isSubmitting}>
+                            <button
+                              className="bg-red-500 text-white px-3 py-1 rounded-md w-full md:w-32 text-sm"
+                              disabled={isSubmitting}
+                            >
                               Reject
                             </button>
                           </>
                         ) : (
-                          <button className="bg-green-500 text-white px-4 py-2 rounded-md w-32" disabled>
+                          <button
+                            className="bg-green-500 text-white px-3 py-1 rounded-md w-full md:w-32 text-sm"
+                            disabled
+                          >
                             Approved
                           </button>
                         )}
