@@ -7,17 +7,19 @@ interface SaleItem {
   price: number;
 }
 
-// Define PageProps with synchronous params
+// Define PageProps with params as a Promise.
 export interface PageProps {
-  params: {
+  params: Promise<{
     saleId: string;
-  };
+  }>;
   searchParams?: { [key: string]: string | string[] };
 }
 
 export default async function InvoicePage({ params }: PageProps) {
+  // Await the params if they come as a Promise
+  const { saleId } = await params;
+
   const supabase = await createClient();
-  const saleId = params.saleId;
 
   // Fetch the sale record including customer details and sale_items.
   const { data: saleData, error: saleError } = await supabase
