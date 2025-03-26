@@ -53,8 +53,12 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
   const [removalMode, setRemovalMode] = useState(false);
   const [groupPrices, setGroupPrices] = useState<Record<string, number>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // Use a ref to track the last processed QR code.
   const lastScannedCodeRef = useRef<string | null>(null);
+
+  // Synchronize parent's state when scannedBags changes.
+  useEffect(() => {
+    onBagsChange(scannedBags);
+  }, [scannedBags, onBagsChange]);
 
   // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
@@ -78,7 +82,6 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
 
   const handleScanBag = async (qrValue: string) => {
     if (!qrValue) return;
-    // Throttle: if the current qrValue equals the last processed, skip.
     if (lastScannedCodeRef.current === qrValue) return;
     lastScannedCodeRef.current = qrValue;
 
@@ -107,35 +110,16 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         updated_at: data.updated_at || null,
       };
 
-      if (removalMode) {
-        // In removal mode, if the bag is found, remove it.
-        setScannedBags(prev => {
-          if (prev.some(b => b.id === bag.id)) {
-            const newBags = prev.filter(b => b.id !== bag.id);
-            onBagsChange(newBags);
-            alert('Bag removed.');
-            return newBags;
-          } else {
-            // If bag is not in list, alert once.
-            alert('Bag not found in scanned list.');
-            return prev;
-          }
-        });
-      } else {
-        // In normal mode, add the bag if it's not already scanned.
-        setScannedBags(prev => {
-          if (prev.some(b => b.id === bag.id)) {
-            alert('Bag already scanned.');
-            return prev;
-          } else {
-            const newBags = [...prev, bag];
-            onBagsChange(newBags);
-            return newBags;
-          }
-        });
-      }
+      // Update local state only.
+      setScannedBags(prev => {
+        if (prev.some(b => b.id === bag.id)) {
+          alert('Bag already scanned.');
+          return prev;
+        } else {
+          return [...prev, bag];
+        }
+      });
     }
-    // Clear the ref after 1 second.
     setTimeout(() => {
       lastScannedCodeRef.current = null;
     }, 1000);
@@ -160,7 +144,6 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         const key = `${bag.harvest_room_id ?? 'none'}_${bag.strain_id ?? 'none'}_${bag.size_category_id ?? 'none'}_${bag.weight}`;
         return key !== groupKey;
       });
-      onBagsChange(newBags);
       return newBags;
     });
   };
@@ -200,7 +183,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       {groups.length > 0 ? (
         <div>
           {groups.map(group => (
-            <div key={group.key} className="border p-2 rounded mb-2 flex flex-col">
+            <div key={group.key} className="border p-4 rounded mb-2 flex flex-col">
               <div className="flex justify-between items-center">
                 <div>
                   <div>
@@ -216,19 +199,21 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
                     {getBagSizeName(group.size_category_id)}
                   </div>
                   <div>
-                    <span className="font-semibold">Weight:</span> {group.weight}
+                    <span className="font-semibold">Weight:</span> {group.weight} lbs
                   </div>
                   <div>
                     <span className="font-semibold">Count:</span> {group.bags.length}
                   </div>
                 </div>
-                <button
-                  onClick={() => removeGroup(group.key)}
-                  className="bg-red-500 text-white px-2 py-1 rounded"
-                  title="Remove Group"
-                >
-                  X
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => removeGroup(group.key)}
+                    className="bg-red-500 text-white px-2 py-1 rounded"
+                    title="Remove Group"
+                  >
+                    X
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2 mt-2">
                 <label className="font-semibold">Price per Bag:</label>

@@ -192,6 +192,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_transactions_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
@@ -240,7 +247,15 @@ export type Database = {
           tenant_id?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       daily_sales_log: {
         Row: {
@@ -262,96 +277,6 @@ export type Database = {
           total_sales?: number | null
         }
         Relationships: []
-      }
-      deal_notifications: {
-        Row: {
-          deal_id: string
-          id: string
-          is_read: boolean | null
-          message: string
-          notified_at: string | null
-        }
-        Insert: {
-          deal_id: string
-          id?: string
-          is_read?: boolean | null
-          message: string
-          notified_at?: string | null
-        }
-        Update: {
-          deal_id?: string
-          id?: string
-          is_read?: boolean | null
-          message?: string
-          notified_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "deal_notifications_deal_id_fkey"
-            columns: ["deal_id"]
-            isOneToOne: false
-            referencedRelation: "deals"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      deals: {
-        Row: {
-          agreed_price: number
-          bag_id: string
-          created_at: string | null
-          customer_id: string
-          id: string
-          payment_due_date: string
-          seller_id: string
-          status: string
-          updated_at: string | null
-        }
-        Insert: {
-          agreed_price: number
-          bag_id: string
-          created_at?: string | null
-          customer_id: string
-          id?: string
-          payment_due_date: string
-          seller_id: string
-          status: string
-          updated_at?: string | null
-        }
-        Update: {
-          agreed_price?: number
-          bag_id?: string
-          created_at?: string | null
-          customer_id?: string
-          id?: string
-          payment_due_date?: string
-          seller_id?: string
-          status?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "deals_bag_id_fkey"
-            columns: ["bag_id"]
-            isOneToOne: false
-            referencedRelation: "bags"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "deals_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "deals_seller_id_fkey"
-            columns: ["seller_id"]
-            isOneToOne: false
-            referencedRelation: "sellers"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       employees: {
         Row: {
@@ -503,107 +428,6 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
-      }
-      reserved_request_items: {
-        Row: {
-          bag_id: string
-          id: string
-          picked_at: string | null
-          picked_by: string | null
-          request_id: string
-          status: string
-          verified_at: string | null
-          verified_by: string | null
-        }
-        Insert: {
-          bag_id: string
-          id?: string
-          picked_at?: string | null
-          picked_by?: string | null
-          request_id: string
-          status?: string
-          verified_at?: string | null
-          verified_by?: string | null
-        }
-        Update: {
-          bag_id?: string
-          id?: string
-          picked_at?: string | null
-          picked_by?: string | null
-          request_id?: string
-          status?: string
-          verified_at?: string | null
-          verified_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "picking_request_items_bag_id_fkey"
-            columns: ["bag_id"]
-            isOneToOne: false
-            referencedRelation: "bags"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_request_items_picked_by_fkey"
-            columns: ["picked_by"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_request_items_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "reserved_requests"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "picking_request_items_verified_by_fkey"
-            columns: ["verified_by"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      reserved_requests: {
-        Row: {
-          created_at: string | null
-          created_by: string
-          employee_id: string
-          id: string
-          status: string
-        }
-        Insert: {
-          created_at?: string | null
-          created_by: string
-          employee_id: string
-          id?: string
-          status?: string
-        }
-        Update: {
-          created_at?: string | null
-          created_by?: string
-          employee_id?: string
-          id?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "picking_requests_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reserved_requests_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       returns: {
         Row: {
@@ -1039,6 +863,7 @@ export type Database = {
           p_license_number: string
           p_email: string
           p_phone: string
+          p_tenant_id: string
         }
         Returns: {
           address: string | null

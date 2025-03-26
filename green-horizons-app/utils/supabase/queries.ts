@@ -386,12 +386,12 @@ export async function getAllTenants(supabase: SupabaseClient) {
   return data;
 }
 
-export async function getTenantByUserId(supabase: any, userId: string) {
+export async function getTenantByProfileId(supabase: any, profileId: string) {
   const { data: employee, error } = await supabase
     .from("employees")
     .select("tenant_id")
-    .eq("user_id", userId)
-    .single();
+    .eq("profile_id", profileId)
+    .maybeSingle();
 
   if (error || !employee) {
     throw new Error("User is not assigned to a tenant");
@@ -562,7 +562,7 @@ export async function getShardDatabaseUrl(supabase: any, shardId: string) {
 }
 
 export async function getUserDatabaseUrl(supabase: any, userId: string) {
-  const tenantId = await getTenantByUserId(supabase, userId);
+  const tenantId = await getTenantByProfileId(supabase, userId);
   const shardId = await getTenantShardId(supabase, tenantId);
   const databaseUrl = await getShardDatabaseUrl(supabase, shardId);
 

@@ -13,8 +13,17 @@ const Header = () => {
         <Link
         href="/"
       >
-        <Button className="flex items-center gap-2 bg-white" size={"sm"}>
-          <Image className="bg-white" src="/greenhorizonsicon.png" alt="Green Horizons Icon" width={150} height={150} unoptimized/>
+        <Button
+          className="flex items-center gap-2 bg-white dark:bg-white hover:bg-neutral-100 dark:hover:bg-neutral-200"
+          size="sm"
+        >
+          <Image
+            src="/greenhorizonsicon.png"
+            alt="Green Horizons Icon"
+            width={150}
+            height={150}
+            unoptimized
+          />
           <span></span>
         </Button>
       </Link>

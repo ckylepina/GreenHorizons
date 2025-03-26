@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import CustomerSection from './CustomerSection';
 import BagScannerSection from './BagScannerSection';
+import { useRouter } from 'next/navigation';
 import type { BagRecord, Customer, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
 import type { Database } from '@/database.types';
 
@@ -13,6 +14,7 @@ interface NewSaleScanClientProps {
   initialBagSizes: BagSize[];
   initialHarvestRooms: HarvestRoom[];
   currentEmployeeId: string;
+  tenantId: string;
 }
 
 // Define a type for customer details.
@@ -33,18 +35,7 @@ interface CreateCustomerParams {
   p_license_number: string;
   p_email: string;
   p_phone: string;
-}
-
-// Helper function to map an existing Customer to our local type.
-function mapCustomerToCustomerDetails(customer: Customer): CustomerDetails {
-  return {
-    first_name: customer.first_name,
-    last_name: customer.last_name,
-    email: customer.email || '',
-    business_name: (customer as Partial<CustomerDetails>).business_name || '',
-    license_number: (customer as Partial<CustomerDetails>).license_number || '',
-    phone: (customer as Partial<CustomerDetails>).phone || '',
-  };
+  p_tenant_id: string;
 }
 
 export default function NewSaleScanClient({
@@ -52,7 +43,10 @@ export default function NewSaleScanClient({
   initialBagSizes,
   initialHarvestRooms,
   currentEmployeeId,
+  tenantId,
 }: NewSaleScanClientProps) {
+  const router = useRouter();
+
   // --- Customer State ---
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,14 +63,6 @@ export default function NewSaleScanClient({
   // --- Bag Scanner State ---
   const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
   const [saleTotal, setSaleTotal] = useState<number>(0);
-
-  // --- Invoice State ---
-  const [invoiceData, setInvoiceData] = useState<{
-    customer: CustomerDetails;
-    scannedBags: BagRecord[];
-    saleTotal: number;
-    date: string;
-  } | null>(null);
 
   const handleNewCustomerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewCustomer({ ...newCustomer, [e.target.name]: e.target.value });
@@ -118,7 +104,9 @@ export default function NewSaleScanClient({
         p_license_number: newCustomer.license_number,
         p_email: newCustomer.email,
         p_phone: newCustomer.phone,
+        p_tenant_id: tenantId,
       };
+      console.log("Creating customer with params:", params);
       const { data, error } = await supabase.rpc<
         "create_customer",
         Database["public"]["Functions"]["create_customer"]
@@ -126,6 +114,7 @@ export default function NewSaleScanClient({
         "create_customer",
         params as Database["public"]["Functions"]["create_customer"]["Args"]
       );
+      console.log("RPC create_customer response:", { data, error });
       if (error) {
         console.error('Error creating customer:', error);
         alert('There was an error creating the customer.');
@@ -144,17 +133,14 @@ export default function NewSaleScanClient({
 
     // --- Step 2: Insert Sale Record ---
     const saleDate = new Date().toISOString();
-    // Use the tenant_id from the first scanned bag or a default.
-    const tenant_id = scannedBags[0]?.tenant_id || 'tenant1';
     const { data: saleData, error: saleError } = await supabase
       .from('sales')
       .insert([{
         customer_id: customerId,
         sale_date: saleDate,
-        status: 'completed', // or your desired sale status
-        tenant_id,
+        status: 'completed',
+        tenant_id: tenantId,
         total_amount: saleTotal,
-        // created_at and updated_at are handled automatically.
         cash_transaction_id: null,
       }])
       .select();
@@ -171,7 +157,6 @@ export default function NewSaleScanClient({
       sale_id: saleRecord.id,
       bag_id: bag.id,
       price: pricePerBag,
-      // created_at is handled automatically.
     }));
     const { error: saleItemsError } = await supabase
       .from('sale_items')
@@ -183,9 +168,8 @@ export default function NewSaleScanClient({
     }
 
     // --- Step 4: Insert Cash Transaction ---
-    // Use currentEmployeeId for created_by/updated_by.
     const cashTransaction = {
-      tenant_id: saleRecord.tenant_id,
+      tenant_id: tenantId,
       transaction_type: "sale" as const,
       amount: saleTotal,
       description: 'Sale transaction',
@@ -215,54 +199,22 @@ export default function NewSaleScanClient({
       return;
     }
 
-    // --- Step 6: Render Invoice ---
-    const customerDetails: CustomerDetails =
-      mode === 'existing'
-        ? mapCustomerToCustomerDetails(selectedCustomer!)
-        : newCustomer;
+    // --- Step 6: Update Bags Status to "sold" ---
+    const bagIds = scannedBags.map(bag => bag.id);
+    const { error: updateBagsError } = await supabase
+      .from('bags')
+      .update({ current_status: 'sold' })
+      .in('id', bagIds);
+    if (updateBagsError) {
+      console.error('Error updating bag status:', updateBagsError);
+      alert('Error updating bag status.');
+      return;
+    }
 
-    setInvoiceData({
-      customer: customerDetails,
-      scannedBags,
-      saleTotal,
-      date: new Date().toLocaleString(),
-    });
+    // --- Step 7: Redirect to Invoice Page ---
+    // Redirect to a separate invoice page using the sale ID.
+    router.push(`/invoice/${saleRecord.id}`);
   };
-
-  if (invoiceData) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-4">Invoice</h1>
-        <div className="border p-4 rounded mb-4">
-          <h2 className="text-xl font-semibold">Customer Details</h2>
-          <p>{invoiceData.customer.first_name} {invoiceData.customer.last_name}</p>
-          <p>Email: {invoiceData.customer.email}</p>
-          {invoiceData.customer.business_name && <p>Business: {invoiceData.customer.business_name}</p>}
-          {invoiceData.customer.license_number && <p>License: {invoiceData.customer.license_number}</p>}
-          {invoiceData.customer.phone && <p>Phone: {invoiceData.customer.phone}</p>}
-        </div>
-        <div className="border p-4 rounded mb-4">
-          <h2 className="text-xl font-semibold">Sale Details</h2>
-          <p>Date: {invoiceData.date}</p>
-          <p>Total: ${invoiceData.saleTotal.toFixed(2)}</p>
-          <h3 className="mt-2 font-semibold">Bag IDs:</h3>
-          <ul className="list-disc pl-5">
-            {invoiceData.scannedBags.map((bag) => (
-              <li key={bag.id}>
-                {bag.id} - {bag.qr_code}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <button
-          onClick={() => window.print()}
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          Print Invoice
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
@@ -272,7 +224,7 @@ export default function NewSaleScanClient({
         setMode={setMode}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
-        searchResults={[]} // implement search if needed
+        // Implement searchResults inside CustomerSection.
         selectedCustomer={selectedCustomer}
         setSelectedCustomer={setSelectedCustomer}
         newCustomer={newCustomer}

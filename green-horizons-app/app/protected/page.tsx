@@ -21,7 +21,6 @@ import AdminDashboardComponent from '@/components/Dashboard/AdminDashboardCompon
 import SalesDashboard from '@/components/Dashboard/SalesDashboard';
 import InventoryManagementDashboard from '@/app/inventory-management/dashboard';
 import CEODashboard from '@/components/CEODashboard';
-import ChiefOfOperationsDashboard from '@/components/Dashboard/ChiefOfOperationsDashboard';
 import { BagRecord, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
 import {
   User,
@@ -132,7 +131,11 @@ export default async function HomePage() {
     const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.
     const ceoSalesRecords = transformSalesRecordsForCEO(rawSalesData);
     return <CEODashboard salesData={ceoSalesRecords} />;
-  } else if (role === 'admin' || role === 'Super Admin') {
+  } else if (
+    role === 'admin' ||
+    role === 'Super Admin' ||
+    role === 'Chief Of Operations'  // <-- Now including Chief Of Operations here.
+  ) {
     let employees: Employee[] = [];
     let sellers: Seller[] = [];
     let dailyBags: BagRecord[] = [];
@@ -211,10 +214,6 @@ export default async function HomePage() {
     const rawSalesData = await getSales(supabase, {});
     const accountingSalesRecords: DashboardSalesData[] = transformSalesDataForDashboard(rawSalesData);
     return <SalesDashboard salesData={accountingSalesRecords} />;
-  } else if (role === 'Chief Of Operations') {
-    const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.
-    const cooSalesRecords: DashboardSalesData[] = transformSalesDataForDashboard(rawSalesData);
-    return <ChiefOfOperationsDashboard salesData={cooSalesRecords} />;
   } else if (role === 'Inventory Management') {
     let inventoryBags: BagRecord[] = [];
     let strains: Strain[] = [];

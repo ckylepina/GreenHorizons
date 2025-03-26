@@ -1,18 +1,12 @@
 // components/bag-entry-form/types.ts
 import { Database } from '@/database.types';
 
-// Extend the generated type if needed.
-export type BagRecord = Database['public']['Tables']['bags']['Row'] & {
-  // Optionally override or add fields if needed.
-  id: string;
-  current_status: string | null;
-  harvest_room_id: string | null;
-  strain_id: string | null;
-  size_category_id: string | null;
-  created_at: string | null;
-  weight: number;
-  qr_code?: string;
-};
+// Use the generated row type for bags as-is.
+export type BagRecord = Database["public"]["Tables"]["bags"]["Row"];
+
+// Use the generated row type for customers.
+// This ensures that all properties, including id, first_name, etc., match your database.
+export type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
 // Type for grouping scanned bags.
 export interface BagGroup {
@@ -22,15 +16,6 @@ export interface BagGroup {
   size_category_id: string | null;
   weight: number;
   bags: BagRecord[];
-}
-
-// Full Customer interface.
-export interface Customer {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  // Add additional customer fields if needed.
 }
 
 // Other interfaces remain unchanged.

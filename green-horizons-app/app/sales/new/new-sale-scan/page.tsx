@@ -8,6 +8,7 @@ import {
   getStrains,
   getBagSizeCategories,
   getHarvestRooms,
+  getTenantByProfileId,
 } from '@/utils/supabase/queries';
 
 export default async function NewSaleScanPage() {
@@ -20,7 +21,7 @@ export default async function NewSaleScanPage() {
     return null;
   }
 
-  // 2. Get the profile data using user.id.
+  // 2. Get the profile data using rawUser.id.
   const profile = await getProfileByUserId(supabase, rawUser.id);
   if (!profile) {
     redirect('/sign-in');
@@ -34,7 +35,10 @@ export default async function NewSaleScanPage() {
     return null;
   }
 
-  // 4. Fetch lookup data.
+  // 4. Get the tenant id using the profile id.
+  const tenantId = await getTenantByProfileId(supabase, profile.id);
+
+  // 5. Fetch lookup data.
   const strains = await getStrains(supabase);
   const bagSizes = await getBagSizeCategories(supabase);
   const harvestRooms = await getHarvestRooms(supabase);
@@ -44,7 +48,8 @@ export default async function NewSaleScanPage() {
       initialStrains={strains ?? []}
       initialBagSizes={bagSizes ?? []}
       initialHarvestRooms={harvestRooms ?? []}
-      currentEmployeeId={employee.id} // Pass the employee id to NewSaleScanClient
+      currentEmployeeId={employee.id} // from employee record
+      tenantId={tenantId}             // tenant id obtained using profile.id
     />
   );
 }
