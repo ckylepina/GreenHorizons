@@ -9,12 +9,11 @@ import PendingRoleRequests from './PendingRoleRequest/PendingRoleRequest';
 import HarvestSummaryReport from '../Reports/HarvestSummaryReport';
 import SalesReports from '../Reports/SalesReport';
 import { Strain, BagSize, HarvestRoom, BagRecord } from '@/components/bag-entry-form/types';
-import { Profile, Employee, Seller, RoleRequest, Tenant, DashboardSalesData } from '@/app/types/dashboard';
+import { Profile, Employee, RoleRequest, Tenant, DashboardSalesData } from '@/app/types/dashboard';
 
 interface AdminDashboardComponentProps {
   profile: Profile;
   employees: Employee[];
-  sellers: Seller[];
   dailyBags: BagRecord[];
   inventoryBags: BagRecord[];
   serverStrains: Strain[];

@@ -721,54 +721,6 @@ export const getBagSizeCategories = cache(async (supabase: SupabaseClient) => {
   return data;
 });
 
-/** =============================================================================
- *  5) SELLERS
- *  ============================================================================= */
-
-/**
- * getSellers
- * Fetch all sellers, optionally filtering by 'active' or 'seller_type'.
- */
-export const getSellers = cache(
-  async (
-    supabase: SupabaseClient,
-    { active, sellerType }: { active?: boolean; sellerType?: 'internal' | 'external' } = {}
-  ) => {
-    let query = supabase.from('sellers').select('*');
-
-    if (typeof active === 'boolean') {
-      query = query.eq('active', active);
-    }
-    if (sellerType) {
-      query = query.eq('seller_type', sellerType);
-    }
-
-    query = query.order('created_at', { ascending: false });
-
-    const { data, error } = await query;
-    if (error) {
-      throw new Error(`Failed to fetch sellers: ${error.message}`);
-    }
-    return data;
-  }
-);
-
-/**
- * getSellerById
- * Fetch a single seller by ID.
- */
-export const getSellerById = cache(async (supabase: SupabaseClient, sellerId: string) => {
-  const { data, error } = await supabase
-    .from('sellers')
-    .select('*')
-    .eq('id', sellerId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to fetch seller: ${error.message}`);
-  }
-  return data;
-});
 
 /** =============================================================================
  *  6) PICKING REQUESTS & ITEMS

@@ -20,7 +20,7 @@ interface GroupedData {
 
 const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSizes }) => {
   // Define allowed sizes and their order.
-  const allowedSizesOrder = ['BIGS', 'SMALLS', 'MICROS'];
+  const allowedSizesOrder = ['Bigs', 'Smalls', 'Micros'];
   const allowedSizes = new Set(allowedSizesOrder);
 
   // Filter inventoryBags to only include those with an allowed size.

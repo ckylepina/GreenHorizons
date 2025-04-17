@@ -4,14 +4,16 @@ import React, { useState } from 'react';
 import { Strain, BagSize, HarvestRoom, BagRecord } from '@/components/bag-entry-form/types';
 
 const BAG_CATEGORIES = [
-  'GREEN WASTE',
-  'BUCKED',
-  'FINAL TRIM',
-  'BIGS',
-  'SMALLS',
-  'MICROS',
+  'Green Waste',
+  'Bucked',
+  'Final Trim',
+  'Bigs',
+  'Smalls',
+  'Micros',
   'PT',
-  'TRIM',
+  'BT',
+  'Ovr(s)',
+  'Ovr(b)',
 ];
 
 interface HarvestSummaryReportProps {

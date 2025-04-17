@@ -6,7 +6,6 @@ import {
   getProfileByUserId,
   getProfileEmployeeRecord,
   getAllEmployees,
-  getSellers,
   getSales,
   getStrains,
   getBagSizeCategories,
@@ -27,7 +26,6 @@ import {
   User,
   Profile,
   Employee,
-  Seller,
   RoleRequest,
   SalesData,
   DashboardSalesData,
@@ -134,7 +132,6 @@ export default async function HomePage() {
     return <CEODashboard salesData={ceoSalesRecords} />;
   } else if (role === 'admin' || role === 'Super Admin') {
     let employees: Employee[] = [];
-    let sellers: Seller[] = [];
     let dailyBags: BagRecord[] = [];
     let inventoryBags: BagRecord[] = [];
     let strains: Strain[] = [];
@@ -179,7 +176,6 @@ export default async function HomePage() {
         };
       });
 
-      sellers = await getSellers(supabase);
       dailyBags = await getDailyBags(supabase);
       inventoryBags = await getMyBags(supabase, employee.id);
       strains = await getStrains(supabase);
@@ -196,7 +192,6 @@ export default async function HomePage() {
       <AdminDashboardComponent
         profile={profile}
         employees={employees}
-        sellers={sellers}
         dailyBags={dailyBags}
         inventoryBags={inventoryBags}
         serverStrains={strains}
