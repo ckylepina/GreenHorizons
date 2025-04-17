@@ -1,3 +1,4 @@
+// components/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -44,7 +45,7 @@ export default function BagEntryForm({
       setLoading(true);
       setMessages([]);
 
-      // Insert without the 'id' field so Supabase auto-generates it.
+      // 1a. Insert into Supabase
       const { data, error } = await supabase
         .from('bags')
         .insert(newBagsData)
@@ -53,15 +54,41 @@ export default function BagEntryForm({
       if (error) {
         console.error('Error inserting new group:', error);
         setMessages([{ type: 'error', text: 'Failed to insert. Please try again.' }]);
-      } else if (data) {
+        return;
+      }
+
+      if (data) {
         const bagCount = data.length;
         setMessages([{ type: 'success', text: `${bagCount} Bag(s) inserted successfully!` }]);
 
-        // Create a new group record.
+        // 1b. Prepare payload for Zoho
+        const payloadItems = data.map((bag: BagRecord) => ({
+          sku: bag.id,  // use your internal bag ID as SKU
+          harvest_room_id: bag.harvest_room_id,
+          strain_id: bag.strain_id,
+          size_category_id: bag.size_category_id,
+          weight: bag.weight,
+        }));
+
+        // 1c. Call server API route to sync with Zoho
+        try {
+          const response = await fetch('/api/zoho/createItemGroup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: payloadItems }),
+          });
+          const result = await response.json();
+          console.log('Zoho sync response:', result);
+        } catch (zohoErr) {
+          console.error('Error syncing with Zoho:', zohoErr);
+          setMessages([{ type: 'error', text: 'Inserted locally but failed to sync to Zoho.' }]);
+        }
+
+        // 1d. Create a new group record for UI
         const newGroupId = `group-${Date.now()}`;
         const group: InsertedGroup = {
           groupId: newGroupId,
-          bags: data, // Save full bag objects here
+          bags: data,
           bagCount,
           insertedAt: new Date().toLocaleString(),
           bagIds: data.map((bag: BagRecord) => bag.id),
@@ -86,7 +113,6 @@ export default function BagEntryForm({
     setLoading(true);
     setMessages([]);
 
-    // Find the group by ID
     const group = allGroups.find((g) => g.groupId === bulkEditGroupId);
     if (!group) {
       setMessages([{ type: 'error', text: 'Group not found. Please try again.' }]);
@@ -164,7 +190,9 @@ export default function BagEntryForm({
       {messages.map((msg, idx) => (
         <p
           key={idx}
-          className={`mt-2 text-center text-sm ${msg.type === 'error' ? 'text-red-600' : 'text-green-600'}`}
+          className={`mt-2 text-center text-sm ${
+            msg.type === 'error' ? 'text-red-600' : 'text-green-600'
+          }`}
         >
           {msg.text}
         </p>
