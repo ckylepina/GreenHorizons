@@ -71,7 +71,7 @@ export const InventoryGroup: React.FC<InventoryGroupProps> = ({
             </thead>
             <tbody>
               {group.bags.map(bag => (
-                <tr key={bag.id} className="border-b hover:bg-gray-100">
+                <tr key={bag.id} className="border-b hover:bg-gray-400">
                   <td className="px-2 py-1">{bag.id}</td>
                   <td className="px-2 py-1">{bag.weight.toFixed(2)}</td>
                   <td className="px-2 py-1">
