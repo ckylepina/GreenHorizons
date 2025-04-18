@@ -8,7 +8,6 @@ interface ZohoItemPayload {
   name: string;
   rate: number;
   purchase_rate: number;
-  attribute_option_name1: string;
   cf_harvest: string;
   cf_size: string;
   weight: number;
@@ -89,7 +88,6 @@ export async function POST(request: NextRequest) {
       name,
       rate,
       purchase_rate,
-      attribute_option_name1,
       cf_harvest,
       cf_size,
       weight,
@@ -118,14 +116,13 @@ export async function POST(request: NextRequest) {
 
   // 6) Construct Zoho payload
   const payload = {
-    group_name: 'Bags',
+    group_name: 'Test',
     unit: 'qty',
     items: items.map(item => ({
       name: item.name,
       sku: item.sku,
       rate: item.rate,
       purchase_rate: item.purchase_rate,
-      attribute_option_name1: item.attribute_option_name1,
       cf_harvest: item.cf_harvest,
       cf_size:   item.cf_size,
       Weight:    Number.isInteger(item.weight)
