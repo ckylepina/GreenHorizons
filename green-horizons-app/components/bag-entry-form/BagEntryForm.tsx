@@ -25,77 +25,100 @@ export default function BagEntryForm({
   employeeId,
   tenantId,
 }: BagEntryFormProps) {
-  // ---- State shared across components ----
   const [messages, setMessages] = useState<{ type: 'error' | 'success'; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [allGroups, setAllGroups] = useState<InsertedGroup[]>([]);
-
-  // Used for bulk edit mode
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [bulkEditGroupId, setBulkEditGroupId] = useState<string | null>(null);
 
-  // Reverse harvest rooms so “bottom” is first (used for both normal & bulk)
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // ---------------------------------------
   // 1) Insert new group logic
-  // ---------------------------------------
-  async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]): Promise<void> {
+  async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     try {
       setLoading(true);
       setMessages([]);
 
-      // 1a. Insert into Supabase
-      const { data, error } = await supabase
+      // 1a) Insert into Supabase
+      const { data: insertedRows, error: insertError } = await supabase
         .from('bags')
         .insert(newBagsData)
         .select();
-
-      if (error) {
-        console.error('Error inserting new group:', error);
+      if (insertError) {
+        console.error('Error inserting new group:', insertError);
         setMessages([{ type: 'error', text: 'Failed to insert. Please try again.' }]);
         return;
       }
-
-      if (data) {
-        const bagCount = data.length;
-        setMessages([{ type: 'success', text: `${bagCount} Bag(s) inserted successfully!` }]);
-
-        // 1b. Prepare payload for Zoho
-        const payloadItems = data.map((bag: BagRecord) => ({
-          sku: bag.id,  // use your internal bag ID as SKU
-          harvest_room_id: bag.harvest_room_id,
-          strain_id: bag.strain_id,
-          size_category_id: bag.size_category_id,
-          weight: bag.weight,
-        }));
-
-        // 1c. Call server API route to sync with Zoho
-        try {
-          const response = await fetch('/api/zoho/createItemGroup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: payloadItems }),
-          });
-          const result = await response.json();
-          console.log('Zoho sync response:', result);
-        } catch (zohoErr) {
-          console.error('Error syncing with Zoho:', zohoErr);
-          setMessages([{ type: 'error', text: 'Inserted locally but failed to sync to Zoho.' }]);
-        }
-
-        // 1d. Create a new group record for UI
-        const newGroupId = `group-${Date.now()}`;
-        const group: InsertedGroup = {
-          groupId: newGroupId,
-          bags: data,
-          bagCount,
-          insertedAt: new Date().toLocaleString(),
-          bagIds: data.map((bag: BagRecord) => bag.id),
-          qrCodes: data.map((bag: BagRecord) => bag.qr_code ?? ''),
-        };
-        setAllGroups((prev) => [...prev, group]);
+      if (!insertedRows || insertedRows.length === 0) {
+        setMessages([{ type: 'error', text: 'No rows inserted.' }]);
+        return;
       }
+
+      setMessages([{ type: 'success', text: `${insertedRows.length} Bag(s) inserted successfully!` }]);
+
+      // 1b) Enrich each bag with human-readable names for Zoho payload
+      const payloadItems = await Promise.all(
+        insertedRows.map(async (bag) => {
+          // Non-null assertions since these fields come from a validated form
+          const harvestRoomId = bag.harvest_room_id!;
+          const strainId = bag.strain_id!;
+          const sizeCategoryId = bag.size_category_id!;
+
+          const [{ data: room }, { data: strain }, { data: size }] = await Promise.all([
+            supabase.from('harvest_rooms').select('name').eq('id', harvestRoomId).single(),
+            supabase.from('strains').select('name').eq('id', strainId).single(),
+            supabase.from('bag_size_categories').select('name').eq('id', sizeCategoryId).single(),
+          ]);
+          const roomName = room?.name ?? 'UnknownRoom';
+          const strainName = strain?.name ?? 'UnknownStrain';
+          const sizeName = size?.name ?? 'UnknownSize';
+
+          return {
+            name: `${roomName} – ${strainName} – ${sizeName} – ${bag.weight}`,
+            sku: bag.id,
+            rate: 0,
+            purchase_rate: 0,
+            attribute_option_name1: sizeName,
+            custom_fields: [
+              { customfield_id: '46000000012845', value: roomName },
+              { customfield_id: '46000000012846', value: strainName },
+              { customfield_id: '46000000012847', value: String(bag.weight) },
+            ],
+          };
+        })
+      );
+
+      const payload = { items: payloadItems };
+      console.log('🧪 Zoho payload:', JSON.stringify(payload, null, 2));
+
+      // 1c) Send to Zoho
+      try {
+        const res = await fetch('/api/zoho/createItemGroup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const zohoResult = await res.json();
+        console.log('Zoho sync response:', zohoResult);
+        if (!res.ok) {
+          setMessages([{ type: 'error', text: 'Failed to sync with Zoho.' }]);
+        }
+      } catch (zohoErr) {
+        console.error('Error syncing with Zoho:', zohoErr);
+        setMessages([{ type: 'error', text: 'Inserted locally but failed to sync to Zoho.' }]);
+      }
+
+      // 1d) Update UI groups
+      const newGroupId = `group-${Date.now()}`;
+      const group: InsertedGroup = {
+        groupId: newGroupId,
+        bags: insertedRows,
+        bagCount: insertedRows.length,
+        insertedAt: new Date().toLocaleString(),
+        bagIds: insertedRows.map((bag) => bag.id),
+        qrCodes: insertedRows.map((bag) => bag.qr_code ?? ''),
+      };
+      setAllGroups((prev) => [...prev, group]);
     } catch (err) {
       console.error('Unexpected error inserting group:', err);
       setMessages([{ type: 'error', text: 'An unexpected error occurred.' }]);
@@ -104,12 +127,9 @@ export default function BagEntryForm({
     }
   }
 
-  // ---------------------------------------
-  // 2) Bulk edit logic (unchanged)
-  // ---------------------------------------
+  // 2) Bulk edit logic
   async function applyBulkEdit(updateFields: Partial<BagRecord>): Promise<void> {
     if (!bulkEditGroupId) return;
-
     setLoading(true);
     setMessages([]);
 
@@ -126,11 +146,10 @@ export default function BagEntryForm({
         .update(updateFields)
         .in('id', group.bagIds.filter((id): id is string => id !== null))
         .select();
-
       if (error) {
         console.error('Error applying bulk edit:', error);
         setMessages([{ type: 'error', text: 'Failed to apply bulk edit. Please try again.' }]);
-      } else if (data) {
+      } else {
         setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
       }
     } catch (err) {
@@ -143,9 +162,6 @@ export default function BagEntryForm({
     }
   }
 
-  // ---------------------------------------
-  // 3) Handlers
-  // ---------------------------------------
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
@@ -157,9 +173,6 @@ export default function BagEntryForm({
     setBulkEditGroupId(null);
   }
 
-  // ---------------------------------------
-  // 4) Render
-  // ---------------------------------------
   return (
     <div>
       <BagInsertForm
