@@ -3,64 +3,100 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-interface CustomField {
-  customfield_id: string;
-  value: string;
-}
-
-export interface ZohoItemPayload {
-  name: string;
+interface ZohoItemPayload {
   sku: string;
+  name: string;
   rate: number;
   purchase_rate: number;
   attribute_option_name1: string;
-  custom_fields: CustomField[];
-}
-
-interface CreateItemGroupRequest {
-  items: ZohoItemPayload[];
-}
-
-/** Type guard for CreateItemGroupRequest */
-function isCreateItemGroupRequest(
-  obj: unknown
-): obj is CreateItemGroupRequest {
-  if (
-    typeof obj !== 'object' ||
-    obj === null ||
-    !('items' in obj)
-  ) {
-    return false;
-  }
-  const maybe = obj as Record<string, unknown>;
-  if (!Array.isArray(maybe.items)) {
-    return false;
-  }
-  // We could check each array element more deeply here if desired
-  return true;
+  cf_harvest: string;
+  cf_size: string;
+  weight: number;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) Parse and validate JSON
-  let payload: unknown;
+  // 1) Parse body as unknown
+  let body: unknown;
   try {
-    payload = await request.json();
+    body = await request.json();
   } catch {
     return NextResponse.json(
-      { error: 'Invalid JSON payload' },
+      { error: 'Invalid JSON' },
       { status: 400 }
     );
   }
 
-  if (!isCreateItemGroupRequest(payload)) {
+  // 2) Must be an object
+  if (typeof body !== 'object' || body === null) {
+    return NextResponse.json(
+      { error: 'Payload must be an object with an "items" array' },
+      { status: 400 }
+    );
+  }
+  const record = body as Record<string, unknown>;
+
+  // 3) Validate "items" exists and is an array
+  if (!('items' in record) || !Array.isArray(record.items)) {
     return NextResponse.json(
       { error: 'Missing or invalid "items" array' },
       { status: 400 }
     );
   }
-  const { items } = payload;
 
-  // 2) Load organization ID and refresh token
+  // 4) Narrow & validate each entry in that array
+  const rawItems = record.items;
+  const items: ZohoItemPayload[] = [];
+
+  for (let i = 0; i < rawItems.length; i++) {
+    const itm = rawItems[i];
+    if (typeof itm !== 'object' || itm === null) {
+      return NextResponse.json(
+        { error: `Item at index ${i} is not an object` },
+        { status: 400 }
+      );
+    }
+    const entry = itm as Record<string, unknown>;
+
+    const {
+      sku,
+      name,
+      rate,
+      purchase_rate,
+      attribute_option_name1,
+      cf_harvest,
+      cf_size,
+      weight,
+    } = entry;
+
+    if (
+      typeof sku !== 'string' ||
+      typeof name !== 'string' ||
+      typeof rate !== 'number' ||
+      typeof purchase_rate !== 'number' ||
+      typeof attribute_option_name1 !== 'string' ||
+      typeof cf_harvest !== 'string' ||
+      typeof cf_size !== 'string' ||
+      typeof weight !== 'number'
+    ) {
+      return NextResponse.json(
+        { error: `Invalid or missing fields on item at index ${i}` },
+        { status: 400 }
+      );
+    }
+
+    items.push({
+      sku,
+      name,
+      rate,
+      purchase_rate,
+      attribute_option_name1,
+      cf_harvest,
+      cf_size,
+      weight,
+    });
+  }
+
+  // 5) Load Zoho org ID & refresh token
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json(
@@ -72,57 +108,53 @@ export async function POST(request: NextRequest) {
   let accessToken: string;
   try {
     accessToken = await refreshZohoAccessToken();
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown auth error';
-    console.error('Error refreshing Zoho token:', message);
+  } catch (err: unknown) {
+    console.error('Error refreshing Zoho token:', err);
     return NextResponse.json(
-      { error: 'Failed to refresh access token' },
+      { error: 'Failed to authenticate with Zoho' },
       { status: 500 }
     );
   }
 
-  // 3) Build and send the request to Zoho
-  const bodyPayload = {
+  // 6) Construct Zoho payload
+  const payload = {
     group_name: 'Bags',
     unit: 'qty',
-    items, // array of ZohoItemPayload
+    items: items.map(item => ({
+      name: item.name,
+      sku: item.sku,
+      rate: item.rate,
+      purchase_rate: item.purchase_rate,
+      attribute_option_name1: item.attribute_option_name1,
+      cf_harvest: item.cf_harvest,
+      cf_size:   item.cf_size,
+      Weight:    Number.isInteger(item.weight)
+                    ? item.weight
+                    : Number(item.weight.toFixed(2)),
+    })),
   };
 
-  let zohoResponse: Response;
-  let zohoResult: Record<string, unknown>;
-  try {
-    zohoResponse = await fetch(
-      `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Zoho-oauthtoken ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bodyPayload),
-      }
-    );
-    zohoResult = (await zohoResponse.json()) as Record<string, unknown>;
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown fetch error';
-    console.error('Fetch error calling Zoho:', message);
+  // 7) Send to Zoho
+  const resp = await fetch(
+    `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Zoho-oauthtoken ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const result = await resp.json();
+  if (!resp.ok) {
+    console.error('Zoho error response:', result);
     return NextResponse.json(
-      { error: 'Network error when calling Zoho API' },
-      { status: 502 }
+      { error: result },
+      { status: resp.status }
     );
   }
 
-  // 4) Handle Zoho response
-  if (!zohoResponse.ok) {
-    console.error('Zoho API error response:', zohoResult);
-    return NextResponse.json(
-      { error: zohoResult },
-      { status: zohoResponse.status }
-    );
-  }
-
-  // 5) Success
-  return NextResponse.json(zohoResult);
+  return NextResponse.json(result);
 }

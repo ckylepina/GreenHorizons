@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { useQRCode } from 'next-qrcode';
-import Image from 'next/image';
 import { BagRecord, Strain, BagSize, HarvestRoom } from './types';
 
 interface LabelsToPrintProps {
@@ -78,7 +77,7 @@ export default function LabelsToPrint({
                 justifyContent: 'center',
                 textAlign: 'left',
                 fontSize: '9pt',
-                fontWeight: 'Bold',
+                fontWeight: 'bold',
                 lineHeight: '1.5',
                 paddingRight: '0.05in',
               }}
@@ -86,9 +85,15 @@ export default function LabelsToPrint({
               <div>{getHarvestRoomName(bag.harvest_room_id)}</div>
               <div>{getStrainName(bag.strain_id)}</div>
               <div>{getBagSizeName(bag.size_category_id)}</div>
-              <div>{bag.weight}lbs</div>
+              <div>
+                {Number.isInteger(bag.weight)
+                  ? `${bag.weight}`
+                  : bag.weight.toFixed(2)}
+                lbs
+              </div>
             </div>
-            {/* Right side: QR Code */}
+
+            {/* Right side: QR Code (only the bag ID) */}
             <div
               style={{
                 position: 'relative',
@@ -101,21 +106,7 @@ export default function LabelsToPrint({
                 transformOrigin: 'center',
               }}
             >
-              {bag.qr_code ? (
-                bag.qr_code.startsWith('data:') || bag.qr_code.startsWith('http') ? (
-                  // Using Next.js Image for optimized rendering
-                  <Image
-                    src={bag.qr_code}
-                    alt="QR Code"
-                    layout="fill"
-                    objectFit="contain"
-                  />
-                ) : (
-                  <QRImage text={bag.qr_code} options={{ scale: 1 }} />
-                )
-              ) : (
-                <span style={{ fontSize: '8pt' }}>No QR Code</span>
-              )}
+              <QRImage text={bag.id} options={{ scale: 1 }} />
             </div>
           </div>
         ))}
