@@ -141,7 +141,7 @@ export default function BagEntryForm({
     }
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('bags')
         .update(updateFields)
         .in('id', group.bagIds.filter((id): id is string => id !== null))
