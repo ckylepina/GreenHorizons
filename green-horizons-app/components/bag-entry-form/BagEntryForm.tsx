@@ -76,42 +76,42 @@ export default function BagEntryForm({
   }
 
   // 2) Bulk edit logic (unchanged)
-  async function applyBulkEdit(updateFields: Partial<BagRecord>) {
+  async function applyBulkEdit(updateFields: Partial<BagRecord>): Promise<void> {
     if (!bulkEditGroupId) return;
-
+  
     setLoading(true);
     setMessages([]);
-
-    const group = allGroups.find(g => g.groupId === bulkEditGroupId);
+  
+    const group = allGroups.find((g) => g.groupId === bulkEditGroupId);
     if (!group) {
-      setMessages([{ type: 'error', text: 'Group not found.' }]);
+      setMessages([{ type: 'error', text: 'Group not found. Please try again.' }]);
       setLoading(false);
       return;
     }
-
+  
     try {
-      const { data: rows, error } = await supabase
+      // Only destructure 'error'—we don't need 'rows' here
+      const { error } = await supabase
         .from('bags')
         .update(updateFields)
-        .in('id', group.bagIds.filter((id): id is string => !!id))
-        .select();
-
+        .in('id', group.bagIds.filter((id): id is string => !!id));
+  
       if (error) {
-        console.error('Error updating bags:', error);
-        setMessages([{ type: 'error', text: 'Failed to update bags.' }]);
+        console.error('Error applying bulk edit:', error);
+        setMessages([{ type: 'error', text: 'Failed to apply bulk edit. Please try again.' }]);
       } else {
-        setMessages([{ type: 'success', text: 'Bags updated successfully.' }]);
+        setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
       }
     } catch (err) {
-      console.error('Unexpected bulk‑edit error:', err);
-      setMessages([{ type: 'error', text: 'Unexpected error during bulk edit.' }]);
+      console.error('Unexpected error in bulk edit:', err);
+      setMessages([{ type: 'error', text: 'An unexpected error occurred during bulk edit.' }]);
     } finally {
       setLoading(false);
       setBulkEditMode(false);
       setBulkEditGroupId(null);
     }
   }
-
+  
   // 3) Handlers to toggle bulk‑edit mode
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
