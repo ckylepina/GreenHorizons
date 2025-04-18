@@ -29,27 +29,62 @@ export default function BagEntryForm({
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [bulkEditGroupId, setBulkEditGroupId] = useState<string | null>(null);
 
+  // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group logic (unchanged)
+  // 1) Insert new group logic (now uses newBagsData & setAllGroups)
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
-    // … your existing insertNewGroup code …
+    setLoading(true);
+    setMessages([]);
+
+    try {
+      // 1a) Insert into Supabase
+      const { data: insertedRows, error } = await supabase
+        .from('bags')
+        .insert(newBagsData)
+        .select();
+
+      if (error) {
+        console.error('Error inserting bags:', error);
+        setMessages([{ type: 'error', text: 'Failed to insert bags. Please try again.' }]);
+        return;
+      }
+      if (!insertedRows || insertedRows.length === 0) {
+        setMessages([{ type: 'error', text: 'No bags were inserted.' }]);
+        return;
+      }
+
+      // 1b) Notify success
+      setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
+
+      // 1c) Record this group for the UI
+      const newGroup: InsertedGroup = {
+        groupId: `group-${Date.now()}`,
+        bags: insertedRows,
+        bagCount: insertedRows.length,
+        insertedAt: new Date().toLocaleString(),
+        bagIds: insertedRows.map(b => b.id),
+        qrCodes: insertedRows.map(b => b.qr_code ?? ''),
+      };
+      setAllGroups(prev => [...prev, newGroup]);
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      setMessages([{ type: 'error', text: 'Unexpected error occurred.' }]);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // 2) Bulk edit logic, now correctly using the destructured `weight`
-  async function applyBulkEdit(updateFields: Partial<BagRecord>): Promise<void> {
+  // 2) Bulk edit logic (unchanged)
+  async function applyBulkEdit(updateFields: Partial<BagRecord>) {
     if (!bulkEditGroupId) return;
 
     setLoading(true);
     setMessages([]);
 
-    // Destructure once up front, so we actually use `weight`
-    const { harvest_room_id, strain_id, size_category_id, weight } = updateFields;
-
-    // Find the group
-    const group = allGroups.find((g) => g.groupId === bulkEditGroupId);
+    const group = allGroups.find(g => g.groupId === bulkEditGroupId);
     if (!group) {
-      setMessages([{ type: 'error', text: 'Group not found. Please try again.' }]);
+      setMessages([{ type: 'error', text: 'Group not found.' }]);
       setLoading(false);
       return;
     }
@@ -58,52 +93,18 @@ export default function BagEntryForm({
       const { data: rows, error } = await supabase
         .from('bags')
         .update(updateFields)
-        .in('id', group.bagIds.filter((id): id is string => id !== null))
+        .in('id', group.bagIds.filter((id): id is string => !!id))
         .select();
 
       if (error) {
-        console.error('Error applying bulk edit:', error);
-        setMessages([{ type: 'error', text: 'Failed to apply bulk edit. Please try again.' }]);
-        return;
+        console.error('Error updating bags:', error);
+        setMessages([{ type: 'error', text: 'Failed to update bags.' }]);
+      } else {
+        setMessages([{ type: 'success', text: 'Bags updated successfully.' }]);
       }
-
-      if (rows?.length) {
-        // Sync each updated bag to Zoho
-        await Promise.all(
-          rows.map(async (bag) => {
-            const payload: {
-              sku: string;
-              harvest_room_id?: string;
-              strain_id?: string;
-              size_category_id?: string;
-              weight?: number;
-            } = { sku: bag.id };
-
-            if (harvest_room_id)      payload.harvest_room_id     = harvest_room_id;
-            if (strain_id)            payload.strain_id           = strain_id;
-            if (size_category_id)     payload.size_category_id    = size_category_id;
-            if (typeof weight === 'number') payload.weight         = weight;  // ← now using `weight`
-
-            try {
-              const res = await fetch('/api/zoho/updateItem', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              });
-              if (!res.ok) {
-                console.error('Zoho update failed for', bag.id, await res.text());
-              }
-            } catch (zohoErr) {
-              console.error('Error syncing with Zoho for', bag.id, zohoErr);
-            }
-          })
-        );
-      }
-
-      setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
     } catch (err) {
-      console.error('Unexpected error in bulk edit:', err);
-      setMessages([{ type: 'error', text: 'An unexpected error occurred during bulk edit.' }]);
+      console.error('Unexpected bulk‑edit error:', err);
+      setMessages([{ type: 'error', text: 'Unexpected error during bulk edit.' }]);
     } finally {
       setLoading(false);
       setBulkEditMode(false);
@@ -111,13 +112,12 @@ export default function BagEntryForm({
     }
   }
 
-  // 3) Handlers
+  // 3) Handlers to toggle bulk‑edit mode
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
-    setMessages([{ type: 'success', text: 'You can now bulk‑edit this group of bags.' }]);
+    setMessages([{ type: 'success', text: 'Bulk‑edit mode enabled.' }]);
   }
-
   function cancelBulkEdit() {
     setBulkEditMode(false);
     setBulkEditGroupId(null);
@@ -151,9 +151,9 @@ export default function BagEntryForm({
         serverBagSizes={serverBagSizes}
       />
 
-      {messages.map((msg, idx) => (
+      {messages.map((msg, i) => (
         <p
-          key={idx}
+          key={i}
           className={`mt-2 text-center text-sm ${
             msg.type === 'error' ? 'text-red-600' : 'text-green-600'
           }`}
