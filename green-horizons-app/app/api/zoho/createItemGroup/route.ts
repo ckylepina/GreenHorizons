@@ -1,58 +1,128 @@
 // app/api/zoho/createItemGroup/route.ts
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-export async function POST(request: Request) {
-  const { items } = await request.json();
-  if (!items || !Array.isArray(items)) {
-    return NextResponse.json({ error: 'Invalid items data' }, { status: 400 });
+interface CustomField {
+  customfield_id: string;
+  value: string;
+}
+
+export interface ZohoItemPayload {
+  name: string;
+  sku: string;
+  rate: number;
+  purchase_rate: number;
+  attribute_option_name1: string;
+  custom_fields: CustomField[];
+}
+
+interface CreateItemGroupRequest {
+  items: ZohoItemPayload[];
+}
+
+/** Type guard for CreateItemGroupRequest */
+function isCreateItemGroupRequest(
+  obj: unknown
+): obj is CreateItemGroupRequest {
+  if (
+    typeof obj !== 'object' ||
+    obj === null ||
+    !('items' in obj)
+  ) {
+    return false;
+  }
+  const maybe = obj as Record<string, unknown>;
+  if (!Array.isArray(maybe.items)) {
+    return false;
+  }
+  // We could check each array element more deeply here if desired
+  return true;
+}
+
+export async function POST(request: NextRequest) {
+  // 1) Parse and validate JSON
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: 'Invalid JSON payload' },
+      { status: 400 }
+    );
   }
 
-  const organizationId = process.env.ZOHO_ORGANIZATION_ID;
-  if (!organizationId) {
-    return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
+  if (!isCreateItemGroupRequest(payload)) {
+    return NextResponse.json(
+      { error: 'Missing or invalid "items" array' },
+      { status: 400 }
+    );
+  }
+  const { items } = payload;
+
+  // 2) Load organization ID and refresh token
+  const orgId = process.env.ZOHO_ORGANIZATION_ID;
+  if (!orgId) {
+    return NextResponse.json(
+      { error: 'Zoho organization ID not configured' },
+      { status: 500 }
+    );
   }
 
-  // Get a fresh access token
-  const accessToken = await refreshZohoAccessToken();
+  let accessToken: string;
+  try {
+    accessToken = await refreshZohoAccessToken();
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown auth error';
+    console.error('Error refreshing Zoho token:', message);
+    return NextResponse.json(
+      { error: 'Failed to refresh access token' },
+      { status: 500 }
+    );
+  }
 
+  // 3) Build and send the request to Zoho
   const bodyPayload = {
-    group_name: "Bags",
-    brand: "Brand",
-    manufacturer: "Bagstore",
-    unit: "qty",
-    description: "Group for Bags created from our system",
-    tax_id: 4815000000044043,
-    attribute_name1: "Small",
-    items: items,
-    attributes: [
-      {
-        id: 4815000000044112,
-        name: "Bags-small",
-        options: [
-          {
-            id: 4815000000044112,
-            name: "Bags-small"
-          }
-        ]
-      }
-    ]
+    group_name: 'Bags',
+    unit: 'qty',
+    items, // array of ZohoItemPayload
   };
 
-  const apiUrl = `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${organizationId}`;
-
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Zoho-oauthtoken ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(bodyPayload)
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    return NextResponse.json({ error: result }, { status: response.status });
+  let zohoResponse: Response;
+  let zohoResult: Record<string, unknown>;
+  try {
+    zohoResponse = await fetch(
+      `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Zoho-oauthtoken ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bodyPayload),
+      }
+    );
+    zohoResult = (await zohoResponse.json()) as Record<string, unknown>;
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown fetch error';
+    console.error('Fetch error calling Zoho:', message);
+    return NextResponse.json(
+      { error: 'Network error when calling Zoho API' },
+      { status: 502 }
+    );
   }
-  return NextResponse.json(result);
+
+  // 4) Handle Zoho response
+  if (!zohoResponse.ok) {
+    console.error('Zoho API error response:', zohoResult);
+    return NextResponse.json(
+      { error: zohoResult },
+      { status: zohoResponse.status }
+    );
+  }
+
+  // 5) Success
+  return NextResponse.json(zohoResult);
 }
