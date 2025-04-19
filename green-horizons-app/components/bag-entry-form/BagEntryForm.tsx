@@ -1,3 +1,4 @@
+// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -29,6 +30,7 @@ export default function BagEntryForm({
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [bulkEditGroupId, setBulkEditGroupId] = useState<string | null>(null);
 
+  // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
   // 1) Insert new group + sync to Zoho
@@ -59,9 +61,21 @@ export default function BagEntryForm({
       const itemsPayload = await Promise.all(
         insertedRows.map(async (bag) => {
           const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
-            supabase.from('harvest_rooms').select('name').eq('id', bag.harvest_room_id!).single(),
-            supabase.from('strains').select('name').eq('id', bag.strain_id!).single(),
-            supabase.from('bag_size_categories').select('name').eq('id', bag.size_category_id).single(),
+            supabase
+              .from('harvest_rooms')
+              .select('name')
+              .eq('id', bag.harvest_room_id!)
+              .single(),
+            supabase
+              .from('strains')
+              .select('name')
+              .eq('id', bag.strain_id!)
+              .single(),
+            supabase
+              .from('bag_size_categories')
+              .select('name')
+              .eq('id', bag.size_category_id!)
+              .single(),
           ]);
 
           const roomName   = hr?.name ?? 'Unknown';
@@ -71,13 +85,21 @@ export default function BagEntryForm({
           const weight     = Number.isInteger(w) ? w : Number(w.toFixed(2));
 
           return {
-            sku: bag.id,
-            name: strainName,
-            rate: 0,
+            sku:           bag.id,
+            name:          strainName,
+            rate:          0,
             purchase_rate: 0,
-            cf_harvest: roomName,
-            cf_size:   sizeName,
-            Weight:    weight,
+            Weight:        weight,
+            custom_fields: [
+              {
+                customfield_id: '6118005000000123236', // Harvest # field ID
+                value:           roomName,
+              },
+              {
+                customfield_id: '6118005000000280001', // Size field ID
+                value:           sizeName,
+              },
+            ],
           };
         })
       );
@@ -102,12 +124,12 @@ export default function BagEntryForm({
 
       // 1d) Update UI groups
       const newGroup: InsertedGroup = {
-        groupId: `group-${Date.now()}`,
-        bags: insertedRows,
-        bagCount: insertedRows.length,
+        groupId:   `group-${Date.now()}`,
+        bags:       insertedRows,
+        bagCount:   insertedRows.length,
         insertedAt: new Date().toLocaleString(),
-        bagIds: insertedRows.map((b) => b.id),
-        qrCodes: insertedRows.map((b) => b.qr_code ?? ''),
+        bagIds:     insertedRows.map((b) => b.id),
+        qrCodes:    insertedRows.map((b) => b.qr_code ?? ''),
       };
       setAllGroups((prev) => [...prev, newGroup]);
     } catch (err) {

@@ -65,7 +65,7 @@ export const InventoryGroup: React.FC<InventoryGroupProps> = ({
               <tr>
                 <th className="border px-2 py-1">Bag ID</th>
                 <th className="border px-2 py-1">Weight</th>
-                <th className="border px-2 py-1">Room</th>
+                <th className="border px-2 py-1">Harvest</th>
                 <th className="border px-2 py-1">Delete</th>
               </tr>
             </thead>
