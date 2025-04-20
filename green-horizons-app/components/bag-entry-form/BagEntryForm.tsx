@@ -1,3 +1,4 @@
+// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -32,13 +33,13 @@ export default function BagEntryForm({
   // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group + sync to Zoho (omitting weight for now)
+  // 1) Insert new group + sync to Zoho (omit weight)
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     setLoading(true);
     setMessages([]);
 
     try {
-      // 1a) Supabase insert
+      // 1a) Insert into Supabase
       const { data: insertedRows, error } = await supabase
         .from('bags')
         .insert(newBagsData)
@@ -46,7 +47,10 @@ export default function BagEntryForm({
 
       if (error || !insertedRows?.length) {
         console.error('Error inserting bags:', error);
-        setMessages([{ type: 'error', text: error ? 'Failed to insert bags.' : 'No bags inserted.' }]);
+        setMessages([{
+          type: 'error',
+          text: error ? 'Failed to insert bags.' : 'No bags inserted.'
+        }]);
         return;
       }
 
@@ -57,28 +61,32 @@ export default function BagEntryForm({
         insertedRows.map(async (bag) => {
           const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
             supabase.from('harvest_rooms').select('name').eq('id', bag.harvest_room_id!).single(),
-            supabase.from('strains').select('name').eq('id', bag.strain_id!).single(),
-            supabase
-              .from('bag_size_categories')
-              .select('name')
-              .eq('id', bag.size_category_id!)
-              .single(),
+            supabase.from('strains')      .select('name').eq('id', bag.strain_id!)      .single(),
+            supabase.from('bag_size_categories')
+                     .select('name').eq('id', bag.size_category_id!) .single(),
           ]);
 
-          const roomName   = hr?.name ?? 'Unknown';
-          const strainName = str?.name ?? 'Unknown';
-          const sizeName   = sz?.name ?? 'Unknown';
+          const roomName    = hr?.name ?? '';
+          const harvestValue = roomName.trim() !== '' ? roomName : bag.harvest_room_id!;
+          const strainName  = str?.name  ?? 'Unknown';
+          const sizeName    = sz?.name   ?? 'Unknown';
 
           return {
-            sku:            bag.id,
-            name:           strainName,
-            rate:           0,
-            purchase_rate:  0,
-            unit:           'qty',
-            track_inventory:true,
+            sku:             bag.id,
+            name:            strainName,
+            rate:            0,
+            purchase_rate:   0,
+            unit:            'qty',
+            track_inventory: true,
             custom_fields: [
-              { customfield_id: '6118005000000123236', value: roomName },
-              { customfield_id: '6118005000000280001', value: sizeName },
+              {
+                customfield_id: '6118005000000123236', // Harvest # ID
+                value:           harvestValue,
+              },
+              {
+                customfield_id: '6118005000000280001', // Size ID
+                value:           sizeName,
+              },
             ],
           };
         })
@@ -86,9 +94,9 @@ export default function BagEntryForm({
 
       // 1c) POST to Zoho Create Item endpoint
       const resp = await fetch('/api/zoho/createItem', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:   JSON.stringify({ items: itemsPayload }),
+        body:    JSON.stringify({ items: itemsPayload }),
       });
       const zohoRes = await resp.json();
       console.log('Zoho createItem response:', zohoRes);
@@ -115,7 +123,7 @@ export default function BagEntryForm({
     }
   }
 
-  // 2) Bulk edit logic
+  // 2) Bulk edit logic (unchanged)
   async function applyBulkEdit(updateFields: Partial<BagRecord>) {
     if (!bulkEditGroupId) return;
     setLoading(true);
@@ -140,8 +148,7 @@ export default function BagEntryForm({
       } else {
         setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
       }
-    } catch (err) {
-      console.error('Unexpected bulk edit error:', err);
+    } catch {
       setMessages([{ type: 'error', text: 'Unexpected error during bulk edit.' }]);
     } finally {
       setLoading(false);
@@ -156,7 +163,6 @@ export default function BagEntryForm({
     setBulkEditMode(true);
     setMessages([{ type: 'success', text: 'Bulk‑edit mode enabled.' }]);
   }
-
   function cancelBulkEdit() {
     setBulkEditMode(false);
     setBulkEditGroupId(null);
