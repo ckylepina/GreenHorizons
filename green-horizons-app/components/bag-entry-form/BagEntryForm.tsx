@@ -95,7 +95,7 @@ export default function BagEntryForm({
       // 1c) POST to Zoho Create Item endpoint
       console.log('🧪 [Client] itemsPayload →', JSON.stringify(itemsPayload, null, 2));
 
-      const resp = await fetch('/api/zoho/createItem', {
+      const resp = await fetch('/api/zoho/createItemGroup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body:   JSON.stringify({ items: itemsPayload }),

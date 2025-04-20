@@ -10,139 +10,85 @@ interface ZohoItemPayload {
   purchase_rate: number;
   cf_harvest: string;
   cf_size: string;
-  weight: number;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) Read body as unknown
-  let body: unknown;
+  // 1) Parse + validate body
+  let raw: unknown;
   try {
-    body = await request.json();
+    raw = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-
-  // 2) Must be a plain object
-  if (typeof body !== 'object' || body === null) {
-    return NextResponse.json(
-      { error: 'Payload must be an object containing an items array' },
-      { status: 400 }
-    );
+  if (typeof raw !== 'object' || raw === null) {
+    return NextResponse.json({ error: 'Expected object with items array' }, { status: 400 });
   }
-  const record = body as Record<string, unknown>;
-
-  // 3) Validate that `items` is present & is an array
-  if (!('items' in record) || !Array.isArray(record.items)) {
-    return NextResponse.json(
-      { error: 'Missing or invalid "items" array' },
-      { status: 400 }
-    );
+  const body = raw as Record<string, unknown>;
+  if (!Array.isArray(body.items)) {
+    return NextResponse.json({ error: 'Missing or invalid "items" array' }, { status: 400 });
   }
+  const items = body.items as ZohoItemPayload[];
 
-  // 4) Narrow items to unknown[] for further validation
-  const rawItems = record.items;
-  const items: ZohoItemPayload[] = [];
-
-  for (let i = 0; i < rawItems.length; i++) {
-    const itm = rawItems[i];
-    if (typeof itm !== 'object' || itm === null) {
-      return NextResponse.json(
-        { error: `Item at index ${i} is not an object` },
-        { status: 400 }
-      );
-    }
-
-    const entry = itm as Record<string, unknown>;
-    const {
-      sku,
-      name,
-      rate,
-      purchase_rate,
-      cf_harvest,
-      cf_size,
-      weight,
-    } = entry;
-
-    if (
-      typeof sku !== 'string' ||
-      typeof name !== 'string' ||
-      typeof rate !== 'number' ||
-      typeof purchase_rate !== 'number' ||
-      typeof cf_harvest !== 'string' ||
-      typeof cf_size !== 'string' ||
-      typeof weight !== 'number'
-    ) {
-      return NextResponse.json(
-        { error: `Invalid or missing fields on item at index ${i}` },
-        { status: 400 }
-      );
-    }
-
-    items.push({ sku, name, rate, purchase_rate, cf_harvest, cf_size, weight });
-  }
-
-  // 5) Load org ID & refresh token
+  // 2) Org ID & OAuth
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
-    return NextResponse.json(
-      { error: 'Zoho organization ID not configured' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
   }
-
-  let accessToken: string;
+  let token: string;
   try {
-    accessToken = await refreshZohoAccessToken();
-  } catch (err) {
-    console.error('Error refreshing Zoho token:', err);
-    return NextResponse.json(
-      { error: 'Failed to authenticate with Zoho' },
-      { status: 500 }
-    );
+    token = await refreshZohoAccessToken();
+  } catch (e) {
+    console.error('Auth error:', e);
+    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 6) Build payload with custom_fields
+  // 3) Build group payload
   const payload = {
     group_name: 'Bags',
-    unit: 'qty',
-    items: items.map(item => ({
-      name:            item.name,
-      sku:             item.sku,
-      rate:            item.rate,
-      purchase_rate:   item.purchase_rate,
-      Weight:          Number.isInteger(item.weight) ? item.weight : Number(item.weight.toFixed(2)),
-      custom_fields: [
-        {
-          customfield_id: '6118005000000123236', // Harvest # ID
-          value:           item.cf_harvest,
-        },
-        {
-          customfield_id: '6118005000000280001', // Size ID
-          value:           item.cf_size,
-        },
-      ],
-    })),
+    unit:       'qty',
+    items: items.map(item => {
+      // ensure harvest is never blank
+      const harvestValue = item.cf_harvest.trim() || item.sku;
+      return {
+        name:            item.name,
+        sku:             item.sku,
+        rate:            item.rate,
+        purchase_rate:   item.purchase_rate,
+        unit:            'qty',
+        track_inventory: true,
+        custom_fields: [
+          { customfield_id: '6118005000000123236', value: harvestValue },
+          { customfield_id: '6118005000000280001', value: item.cf_size    },
+        ],
+      };
+    }),
   };
 
-  // 7) Send to Zoho
-  const resp = await fetch(
-    `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`,
-    {
+  console.log('🧪 [Server] createItemGroup payload →', JSON.stringify(payload, null, 2));
+
+  // 4) Send to Zoho
+  const url = `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`;
+  let resp: Response, json: unknown;
+  try {
+    resp = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Zoho-oauthtoken ${accessToken}`,
+        Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
-    }
-  );
-  const result = await resp.json();
-
-  // 8) Handle Zoho’s response
-  if (!resp.ok) {
-    console.error('Zoho error response:', result);
-    return NextResponse.json({ error: result }, { status: resp.status });
+    });
+    json = await resp.json();
+  } catch (e) {
+    console.error('Network error calling Zoho:', e);
+    return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  return NextResponse.json(result);
+  if (!resp.ok) {
+    console.error('Zoho createItemGroup error:', json);
+    return NextResponse.json(json, { status: resp.status });
+  }
+
+  // 5) Success
+  return NextResponse.json(json);
 }
