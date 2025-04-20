@@ -3,33 +3,27 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-interface ZohoItemPayload {
-  sku: string;
-  name: string;
-  rate: number;
-  purchase_rate: number;
-  cf_harvest: string;
-  cf_size: string;
+const HARVEST_FIELD_ID = '6118005000000123236';
+const SIZE_FIELD_ID    = '6118005000000280001';
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) Parse + validate body
-  let raw: unknown;
+  // 1) Parse + validate
+  let rawBody: unknown;
   try {
-    raw = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (typeof raw !== 'object' || raw === null) {
-    return NextResponse.json({ error: 'Expected an object with items[]' }, { status: 400 });
+  if (!isRecord(rawBody) || !Array.isArray(rawBody.items)) {
+    return NextResponse.json({ error: 'Expected { items: [...] }' }, { status: 400 });
   }
-  const body = raw as Record<string, unknown>;
-  if (!Array.isArray(body.items)) {
-    return NextResponse.json({ error: 'Missing or invalid "items" array' }, { status: 400 });
-  }
-  const items = body.items as ZohoItemPayload[];
+  const itemsRaw = rawBody.items;
 
-  // 2) Org ID & OAuth
+  // 2) OAuth
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
@@ -38,27 +32,53 @@ export async function POST(request: NextRequest) {
   try {
     token = await refreshZohoAccessToken();
   } catch (e) {
-    console.error('Auth error refreshing Zoho token:', e);
+    console.error('Auth error:', e);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 3) Build the Group payload
+  // 3) Build Zoho group payload
   const payload = {
     group_name: 'Bags',
     unit:       'qty',
-    items: items.map((item) => {
-      // never allow a blank Harvest #
-      const harvestValue = item.cf_harvest.trim() || item.sku;
+    items: itemsRaw.map((it) => {
+      if (!isRecord(it)) {
+        throw new Error('Invalid item payload');
+      }
+      const sku           = String(it.sku ?? '');
+      const name          = String(it.name ?? '');
+      const rate          = Number(it.rate ?? 0);
+      const purchase_rate = Number(it.purchase_rate ?? 0);
+
+      // extract harvest & size from custom_fields[]
+      const cfArray = Array.isArray(it.custom_fields) ? it.custom_fields : [];
+      let harvestValue = '';
+      let sizeValue    = '';
+      for (const cf of cfArray) {
+        if (!isRecord(cf)) continue;
+        const id  = String(cf.customfield_id ?? '');
+        const val = cf.value;
+        if (id === HARVEST_FIELD_ID && typeof val === 'string') {
+          harvestValue = val;
+        }
+        if (id === SIZE_FIELD_ID && typeof val === 'string') {
+          sizeValue = val;
+        }
+      }
+      // fallback if empty
+      if (!harvestValue.trim()) {
+        harvestValue = sku;
+      }
+
       return {
-        name:            item.name,
-        sku:             item.sku,
-        rate:            item.rate,
-        purchase_rate:   item.purchase_rate,
+        name,
+        sku,
+        rate,
+        purchase_rate,
         unit:            'qty',
         track_inventory: true,
         custom_fields: [
-          { customfield_id: '6118005000000123236', value: harvestValue },
-          { customfield_id: '6118005000000280001', value: item.cf_size    },
+          { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
+          { customfield_id: SIZE_FIELD_ID,    value: sizeValue     },
         ],
       };
     }),
@@ -66,12 +86,12 @@ export async function POST(request: NextRequest) {
 
   console.log('🧪 [Server] createItemGroup payload:', JSON.stringify(payload, null, 2));
 
-  // 4) Send to Zoho
+  // 4) Call Zoho
   const url = `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`;
   let resp: Response;
   try {
     resp = await fetch(url, {
-      method: 'POST',
+      method:  'POST',
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
@@ -83,23 +103,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 5) Attempt to parse Zoho’s response
-  let zohoBody: unknown;
+  // 5) Read & parse Zoho’s response
+  let body: unknown;
   try {
-    zohoBody = await resp.json();
-  } catch (parseErr) {
-    // if parsing fails, grab raw text
-    const rawText = await resp.text();
-    console.error('Failed to parse Zoho response JSON:', parseErr);
-    zohoBody = { raw: rawText };
+    body = await resp.json();
+  } catch {
+    const text = await resp.text();
+    console.error('Failed to parse Zoho JSON, raw:', text);
+    body = { raw: text };
   }
 
-  // 6) If Zoho returned an error status, forward it
+  // 6) Handle errors or return success
   if (!resp.ok) {
-    console.error('Zoho returned error status:', resp.status, zohoBody);
-    return NextResponse.json(zohoBody, { status: resp.status });
+    console.error('Zoho returned error status', resp.status, body);
+    return NextResponse.json(body, { status: resp.status });
   }
 
-  // 7) Success — return the full Zoho response JSON
-  return NextResponse.json(zohoBody);
+  return NextResponse.json(body);
 }
