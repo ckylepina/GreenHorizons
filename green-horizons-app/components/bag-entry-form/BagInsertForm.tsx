@@ -69,7 +69,6 @@ export default function BagInsertForm({
       }));
       if (value) {
         const filtered = serverStrains.filter((strain) => {
-          console.log("Strain:", strain);
           // If harvest_room_id is an array, check if it includes value; otherwise, compare directly.
           if (Array.isArray(strain.harvest_room_id)) {
             return strain.harvest_room_id.includes(value);

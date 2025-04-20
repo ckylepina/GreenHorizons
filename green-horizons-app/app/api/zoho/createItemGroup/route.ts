@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
   if (typeof raw !== 'object' || raw === null) {
-    return NextResponse.json({ error: 'Expected object with items array' }, { status: 400 });
+    return NextResponse.json({ error: 'Expected an object with items[]' }, { status: 400 });
   }
   const body = raw as Record<string, unknown>;
   if (!Array.isArray(body.items)) {
@@ -38,16 +38,16 @@ export async function POST(request: NextRequest) {
   try {
     token = await refreshZohoAccessToken();
   } catch (e) {
-    console.error('Auth error:', e);
+    console.error('Auth error refreshing Zoho token:', e);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 3) Build group payload
+  // 3) Build the Group payload
   const payload = {
     group_name: 'Bags',
     unit:       'qty',
-    items: items.map(item => {
-      // ensure harvest is never blank
+    items: items.map((item) => {
+      // never allow a blank Harvest #
       const harvestValue = item.cf_harvest.trim() || item.sku;
       return {
         name:            item.name,
@@ -64,11 +64,11 @@ export async function POST(request: NextRequest) {
     }),
   };
 
-  console.log('🧪 [Server] createItemGroup payload →', JSON.stringify(payload, null, 2));
+  console.log('🧪 [Server] createItemGroup payload:', JSON.stringify(payload, null, 2));
 
   // 4) Send to Zoho
   const url = `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`;
-  let resp: Response, json: unknown;
+  let resp: Response;
   try {
     resp = await fetch(url, {
       method: 'POST',
@@ -78,17 +78,28 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(payload),
     });
-    json = await resp.json();
-  } catch (e) {
-    console.error('Network error calling Zoho:', e);
+  } catch (networkErr) {
+    console.error('Network error calling Zoho:', networkErr);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  if (!resp.ok) {
-    console.error('Zoho createItemGroup error:', json);
-    return NextResponse.json(json, { status: resp.status });
+  // 5) Attempt to parse Zoho’s response
+  let zohoBody: unknown;
+  try {
+    zohoBody = await resp.json();
+  } catch (parseErr) {
+    // if parsing fails, grab raw text
+    const rawText = await resp.text();
+    console.error('Failed to parse Zoho response JSON:', parseErr);
+    zohoBody = { raw: rawText };
   }
 
-  // 5) Success
-  return NextResponse.json(json);
+  // 6) If Zoho returned an error status, forward it
+  if (!resp.ok) {
+    console.error('Zoho returned error status:', resp.status, zohoBody);
+    return NextResponse.json(zohoBody, { status: resp.status });
+  }
+
+  // 7) Success — return the full Zoho response JSON
+  return NextResponse.json(zohoBody);
 }
