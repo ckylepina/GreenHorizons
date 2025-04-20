@@ -1,4 +1,3 @@
-// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -33,7 +32,7 @@ export default function BagEntryForm({
   // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group + sync to Zoho
+  // 1) Insert new group + sync to Zoho (omitting weight for now)
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     setLoading(true);
     setMessages([]);
@@ -45,13 +44,9 @@ export default function BagEntryForm({
         .insert(newBagsData)
         .select();
 
-      if (error) {
+      if (error || !insertedRows?.length) {
         console.error('Error inserting bags:', error);
-        setMessages([{ type: 'error', text: 'Failed to insert bags.' }]);
-        return;
-      }
-      if (!insertedRows?.length) {
-        setMessages([{ type: 'error', text: 'No bags inserted.' }]);
+        setMessages([{ type: 'error', text: error ? 'Failed to insert bags.' : 'No bags inserted.' }]);
         return;
       }
 
@@ -61,16 +56,8 @@ export default function BagEntryForm({
       const itemsPayload = await Promise.all(
         insertedRows.map(async (bag) => {
           const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
-            supabase
-              .from('harvest_rooms')
-              .select('name')
-              .eq('id', bag.harvest_room_id!)
-              .single(),
-            supabase
-              .from('strains')
-              .select('name')
-              .eq('id', bag.strain_id!)
-              .single(),
+            supabase.from('harvest_rooms').select('name').eq('id', bag.harvest_room_id!).single(),
+            supabase.from('strains').select('name').eq('id', bag.strain_id!).single(),
             supabase
               .from('bag_size_categories')
               .select('name')
@@ -81,45 +68,33 @@ export default function BagEntryForm({
           const roomName   = hr?.name ?? 'Unknown';
           const strainName = str?.name ?? 'Unknown';
           const sizeName   = sz?.name ?? 'Unknown';
-          const w          = bag.weight;
-          const weight     = Number.isInteger(w) ? w : Number(w.toFixed(2));
 
           return {
-            sku:           bag.id,
-            name:          strainName,
-            rate:          0,
-            purchase_rate: 0,
-            Weight:        weight,
+            sku:            bag.id,
+            name:           strainName,
+            rate:           0,
+            purchase_rate:  0,
+            unit:           'qty',
+            track_inventory:true,
             custom_fields: [
-              {
-                customfield_id: '6118005000000123236', // Harvest # field ID
-                value:           roomName,
-              },
-              {
-                customfield_id: '6118005000000280001', // Size field ID
-                value:           sizeName,
-              },
+              { customfield_id: '6118005000000123236', value: roomName },
+              { customfield_id: '6118005000000280001', value: sizeName },
             ],
           };
         })
       );
 
-      // 1c) POST to Zoho
-      try {
-        const resp = await fetch('/api/zoho/createItemGroup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: itemsPayload }),
-        });
-        const zohoRes = await resp.json();
-        console.log('Zoho createItemGroup response:', zohoRes);
-        if (!resp.ok) {
-          console.error('Zoho error:', zohoRes);
-          setMessages([{ type: 'error', text: 'Failed to sync to Zoho.' }]);
-        }
-      } catch (zErr) {
-        console.error('Error syncing to Zoho:', zErr);
-        setMessages([{ type: 'error', text: 'Sync to Zoho failed.' }]);
+      // 1c) POST to Zoho Create Item endpoint
+      const resp = await fetch('/api/zoho/createItem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:   JSON.stringify({ items: itemsPayload }),
+      });
+      const zohoRes = await resp.json();
+      console.log('Zoho createItem response:', zohoRes);
+      if (!resp.ok) {
+        console.error('Zoho error:', zohoRes);
+        setMessages([{ type: 'error', text: 'Failed to sync to Zoho.' }]);
       }
 
       // 1d) Update UI groups
@@ -140,10 +115,9 @@ export default function BagEntryForm({
     }
   }
 
-  // 2) Bulk edit (unchanged)
+  // 2) Bulk edit logic
   async function applyBulkEdit(updateFields: Partial<BagRecord>) {
     if (!bulkEditGroupId) return;
-
     setLoading(true);
     setMessages([]);
 
@@ -176,12 +150,13 @@ export default function BagEntryForm({
     }
   }
 
-  // 3) Handlers
+  // 3) Handlers to toggle bulk‑edit mode
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
     setMessages([{ type: 'success', text: 'Bulk‑edit mode enabled.' }]);
   }
+
   function cancelBulkEdit() {
     setBulkEditMode(false);
     setBulkEditGroupId(null);

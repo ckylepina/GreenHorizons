@@ -8,15 +8,15 @@ const HARVEST_FIELD_ID = '6118005000000123236';
 const SIZE_FIELD_ID    = '6118005000000280001';
 
 export async function POST(request: NextRequest) {
-  // 0) Ensure secret is set
+  // 0) Secret check
   const secret = process.env.ZOHO_WEBHOOK_SECRET;
   if (!secret) {
     console.error('Missing ZOHO_WEBHOOK_SECRET');
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
   }
 
-  // 1) Read raw body & verify signature
-  const rawBody    = await request.text();
+  // 1) Verify signature
+  const rawBody     = await request.text();
   const incomingSig = request.headers.get('X-ZOHO-SIGNATURE') ?? '';
   const expectedSig = createHmac('sha256', secret).update(rawBody).digest('base64');
   if (incomingSig !== expectedSig) {
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
   const payload = parsed as Record<string, unknown>;
 
-  // 3) Validate module/action/data
+  // 3) Extract module, action, data
   const moduleRaw = payload['module'];
   const actionRaw = payload['action'];
   const dataRaw   = payload['data'];
@@ -58,31 +58,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: 'ignored' });
   }
 
-  // 5) Extract SKU & weight
-  const skuRaw    = dataObj['sku'];
-  const sku       = typeof skuRaw === 'string' ? skuRaw : String(skuRaw ?? '');
-  const weightRaw = dataObj['Weight'] ?? dataObj['weight'] ?? '0';
-  const weight    = parseFloat(String(weightRaw));
+  // 5) Extract SKU
+  const skuRaw = dataObj['sku'];
+  const sku    = typeof skuRaw === 'string' ? skuRaw : String(skuRaw ?? '');
+  if (!sku) {
+    return NextResponse.json({ error: 'Missing SKU' }, { status: 400 });
+  }
 
-  // 6) Extract custom_fields
+  // 6) Pull custom_fields → harvestRoom & sizeName
   const cfRaw   = dataObj['custom_fields'];
   const cfArray = Array.isArray(cfRaw) ? cfRaw : [];
   let harvestRoom = '';
   let sizeName    = '';
+
   for (const entry of cfArray) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const cf = entry as Record<string, unknown>;
-    const idVal = cf['customfield_id'];
-    const val   = cf['value'];
-    if (String(idVal) === HARVEST_FIELD_ID && typeof val === 'string') {
+    const cfEntry = entry as Record<string, unknown>;
+    const idVal   = String(cfEntry['customfield_id'] ?? '');
+    const val     = cfEntry['value'];
+    if (idVal === HARVEST_FIELD_ID && typeof val === 'string') {
       harvestRoom = val;
     }
-    if (String(idVal) === SIZE_FIELD_ID && typeof val === 'string') {
+    if (idVal === SIZE_FIELD_ID && typeof val === 'string') {
       sizeName = val;
     }
   }
 
-  // 7) Sync to Supabase
+  // 7) Upsert/delete in Supabase
   const supabase = await createClient();
   const now      = new Date().toISOString();
   try {
@@ -94,7 +96,6 @@ export async function POST(request: NextRequest) {
           harvest_room_id:  harvestRoom,
           strain_id:        String(dataObj['name'] ?? ''),
           size_category_id: sizeName,
-          weight,
           current_status:   'in_inventory',
           updated_at:       now,
           created_at:       now,
