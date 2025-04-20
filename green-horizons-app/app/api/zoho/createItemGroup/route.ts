@@ -3,71 +3,93 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-const HARVEST_FIELD_ID = '6118005000000123236';
-const SIZE_FIELD_ID    = '6118005000000280001';
+const HARVEST_FIELD = 'cf_harvest';
+const SIZE_FIELD    = 'cf_size';
 
+// A little type‐guard
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) Parse + validate
-  let rawBody: unknown;
+  // 1) Parse + validate incoming JSON
+  let payload: unknown;
   try {
-    rawBody = await request.json();
+    payload = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (!isRecord(rawBody) || !Array.isArray(rawBody.items)) {
-    return NextResponse.json({ error: 'Expected { items: [...] }' }, { status: 400 });
+  if (!isRecord(payload)) {
+    return NextResponse.json(
+      { error: 'Expected an object with an "items" array' },
+      { status: 400 }
+    );
   }
-  const itemsRaw = rawBody.items;
 
-  // 2) OAuth
+  const itemsRaw = payload['items'];
+  if (!Array.isArray(itemsRaw)) {
+    return NextResponse.json(
+      { error: 'Missing or invalid "items" array' },
+      { status: 400 }
+    );
+  }
+
+  // 2) OAuth setup
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
-    return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Organization ID not configured' },
+      { status: 500 }
+    );
   }
+
   let token: string;
   try {
     token = await refreshZohoAccessToken();
   } catch (e) {
-    console.error('Auth error:', e);
-    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
+    console.error('Auth error refreshing Zoho token:', e);
+    return NextResponse.json(
+      { error: 'Authentication failed' },
+      { status: 500 }
+    );
   }
 
-  // 3) Build Zoho group payload
-  const payload = {
-    group_name: 'Bags',
-    unit:       'qty',
-    items: itemsRaw.map((it) => {
-      if (!isRecord(it)) {
-        throw new Error('Invalid item payload');
-      }
-      const sku           = String(it.sku ?? '');
-      const name          = String(it.name ?? '');
-      const rate          = Number(it.rate ?? 0);
-      const purchase_rate = Number(it.purchase_rate ?? 0);
+  // 3) Build the Zoho Item Group payload
+  type ZohoItem = {
+    name: string;
+    sku: string;
+    rate: number;
+    purchase_rate: number;
+    unit: 'qty';
+    track_inventory: true;
+    [HARVEST_FIELD]: string;
+    [SIZE_FIELD]: string;
+  };
 
-      // extract harvest & size from custom_fields[]
-      const cfArray = Array.isArray(it.custom_fields) ? it.custom_fields : [];
-      let harvestValue = '';
-      let sizeValue    = '';
-      for (const cf of cfArray) {
-        if (!isRecord(cf)) continue;
-        const id  = String(cf.customfield_id ?? '');
-        const val = cf.value;
-        if (id === HARVEST_FIELD_ID && typeof val === 'string') {
-          harvestValue = val;
-        }
-        if (id === SIZE_FIELD_ID && typeof val === 'string') {
-          sizeValue = val;
-        }
+  const groupPayload = {
+    group_name: 'Bags',
+    unit:       'qty' as const,
+    items: itemsRaw.map((entry): ZohoItem => {
+      if (!isRecord(entry)) {
+        throw new Error('Invalid item entry');
       }
-      // fallback if empty
-      if (!harvestValue.trim()) {
-        harvestValue = sku;
-      }
+
+      const sku           = String(entry['sku'] ?? '');
+      const name          = String(entry['name'] ?? '');
+      const rate          = Number(entry['rate'] ?? 0);
+      const purchase_rate = Number(entry['purchase_rate'] ?? 0);
+
+      // Pull custom values off the incoming record
+      const harvestValRaw = entry[HARVEST_FIELD];
+      const sizeValRaw    = entry[SIZE_FIELD];
+      const harvestValue  =
+        typeof harvestValRaw === 'string' && harvestValRaw.trim() !== ''
+          ? harvestValRaw.trim()
+          : sku;
+      const sizeValue =
+        typeof sizeValRaw === 'string'
+          ? sizeValRaw.trim()
+          : '';
 
       return {
         name,
@@ -76,15 +98,16 @@ export async function POST(request: NextRequest) {
         purchase_rate,
         unit:            'qty',
         track_inventory: true,
-        custom_fields: [
-          { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
-          { customfield_id: SIZE_FIELD_ID,    value: sizeValue     },
-        ],
+        [HARVEST_FIELD]: harvestValue,
+        [SIZE_FIELD]:    sizeValue,
       };
     }),
   };
 
-  console.log('🧪 [Server] createItemGroup payload:', JSON.stringify(payload, null, 2));
+  console.log(
+    '🧪 [Server] createItemGroup payload:',
+    JSON.stringify(groupPayload, null, 2)
+  );
 
   // 4) Call Zoho
   const url = `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`;
@@ -96,28 +119,30 @@ export async function POST(request: NextRequest) {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(groupPayload),
     });
   } catch (networkErr) {
     console.error('Network error calling Zoho:', networkErr);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 5) Read & parse Zoho’s response
-  let body: unknown;
+  // 5) Parse Zoho’s response
+  let zohoBody: unknown;
   try {
-    body = await resp.json();
+    zohoBody = await resp.json();
   } catch {
     const text = await resp.text();
-    console.error('Failed to parse Zoho JSON, raw:', text);
-    body = { raw: text };
+    console.error('Failed to parse Zoho JSON:', text);
+    zohoBody = { raw: text };
   }
 
-  // 6) Handle errors or return success
+  // 6) Forward any Zoho error
   if (!resp.ok) {
-    console.error('Zoho returned error status', resp.status, body);
-    return NextResponse.json(body, { status: resp.status });
+    console.error('🛑 Zoho error status:', resp.status, zohoBody);
+    return NextResponse.json(zohoBody, { status: resp.status });
   }
 
-  return NextResponse.json(body);
+  // 7) Success
+  console.log('✅ Zoho success:', zohoBody);
+  return NextResponse.json(zohoBody);
 }
