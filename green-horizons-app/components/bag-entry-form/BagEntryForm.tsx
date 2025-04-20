@@ -7,6 +7,9 @@ import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
 import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
+const HARVEST_FIELD_ID = '6118005000000123236';
+const SIZE_FIELD_ID    = '6118005000000280001';
+
 interface BagEntryFormProps {
   serverStrains: Strain[];
   serverBagSizes: BagSize[];
@@ -33,7 +36,7 @@ export default function BagEntryForm({
   // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group + sync to Zoho (using top‑level cf_harvest & cf_size)
+  // 1) Insert new group + sync to Zoho (nested custom_fields)
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     setLoading(true);
     setMessages([]);
@@ -56,10 +59,14 @@ export default function BagEntryForm({
 
       setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
 
-      // 1b) Build Zoho payload with top‑level cf_harvest and cf_size
+      // 1b) Build Zoho payload with nested custom_fields
       const itemsPayload = await Promise.all(
         insertedRows.map(async (bag) => {
-          const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
+          const [
+            { data: hr },
+            { data: str },
+            { data: sz },
+          ] = await Promise.all([
             supabase
               .from('harvest_rooms')
               .select('name')
@@ -77,10 +84,9 @@ export default function BagEntryForm({
               .single(),
           ]);
 
-          const roomName    = hr?.name ?? '';
-          const harvestValue = roomName.trim() || bag.harvest_room_id!;
-          const strainName  = str?.name  ?? 'Unknown';
-          const sizeName    = sz?.name   ?? 'Unknown';
+          const harvestValue = (hr?.name ?? bag.harvest_room_id!).toString().trim() || bag.harvest_room_id!;
+          const strainName  = (str?.name ?? 'Unknown').toString();
+          const sizeName    = (sz?.name ?? 'Unknown').toString();
 
           return {
             sku:             bag.id,
@@ -89,19 +95,21 @@ export default function BagEntryForm({
             purchase_rate:   0,
             unit:            'qty',
             track_inventory: true,
-            cf_harvest:      harvestValue,
-            cf_size:         sizeName,
+            custom_fields: [
+              { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
+              { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
+            ],
           };
         })
       );
 
-      // 1c) POST to Zoho Create ItemGroup endpoint
       console.log('🧪 [Client] itemsPayload →', JSON.stringify(itemsPayload, null, 2));
 
+      // 1c) POST to your createItemGroup route
       const resp = await fetch('/api/zoho/createItemGroup', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:   JSON.stringify({ items: itemsPayload }),
+        body:    JSON.stringify({ items: itemsPayload }),
       });
       const zohoRes = await resp.json();
       console.log('🧪 [Client] Zoho createItemGroup response:', zohoRes);
@@ -169,7 +177,6 @@ export default function BagEntryForm({
     setBulkEditMode(true);
     setMessages([{ type: 'success', text: 'Bulk‑edit mode enabled.' }]);
   }
-
   function cancelBulkEdit() {
     setBulkEditMode(false);
     setBulkEditGroupId(null);
