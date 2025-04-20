@@ -57,6 +57,9 @@ export async function POST(request: NextRequest) {
   try {
     const results = await Promise.all(
       items.map(async (item) => {
+        // ensure harvest is never blank
+        const harvestValue = item.cf_harvest.trim() || item.sku;
+
         const payload = {
           name:            item.name,
           sku:             item.sku,
@@ -65,10 +68,13 @@ export async function POST(request: NextRequest) {
           unit:            'qty',
           track_inventory: true,
           custom_fields: [
-            { customfield_id: '6118005000000123236', value: item.cf_harvest },
+            { customfield_id: '6118005000000123236', value: harvestValue },
             { customfield_id: '6118005000000280001', value: item.cf_size    },
           ],
         };
+
+        // debug log
+        console.log('🧪 Sending to Zoho:', JSON.stringify(payload, null, 2));
 
         const resp = await fetch(
           `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}`,
@@ -86,7 +92,7 @@ export async function POST(request: NextRequest) {
           console.error('Zoho createItem error:', json);
           throw { status: resp.status, body: json };
         }
-        return json;
+        return json; // { item: { … } }
       })
     );
 
