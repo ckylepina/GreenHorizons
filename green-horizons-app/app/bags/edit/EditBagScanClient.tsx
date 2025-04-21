@@ -142,21 +142,34 @@ const EditBagScanClient: React.FC<EditBagScanClientProps> = ({
     }
 
     // 2) Push same changes into Zoho for each bag
+    // …
     await Promise.all(
       data!.map(async (bag) => {
-        await fetch('/api/zoho/updateItem', {
+        const payload = {
+          sku: bag.id,
+          name: initialStrains.find(s => s.id === fields.strain_id)?.name ?? bag.id,
+          cf_harvest: fields.harvest_room_id ?? '',
+          cf_size:    fields.size_category_id ?? '',
+          rate: 0,
+          purchase_rate: 0,
+        };
+
+        console.log('🛠️ [Client] calling updateItem with:', payload);
+
+        const resp = await fetch('/api/zoho/updateItem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sku: bag.id,
-            name: initialStrains.find(s => s.id === fields.strain_id)?.name ?? bag.id,
-            cf_harvest: fields.harvest_room_id ?? '',
-            cf_size: fields.size_category_id ?? '',
-            // if you also want to update rate/purchase_rate:
-            rate: 0,
-            purchase_rate: 0,
-          }),
+          body: JSON.stringify(payload),
         });
+
+        let json: unknown;
+        try { json = await resp.json(); }
+        catch { json = await resp.text(); }
+
+        console.log(`🛠️ [Client] updateItem response status=${resp.status}`, json);
+        if (!resp.ok) {
+          throw new Error(`Zoho update failed: ${resp.status}`);
+        }
       })
     );
 
