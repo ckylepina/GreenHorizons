@@ -124,7 +124,6 @@ export default async function HomePage() {
 
   // 6. Determine the role.
   const role = employee.role_name;
-  console.log('Employee role:', role);
 
   if (role === 'Chief Executive Officer') {
     const rawSalesData = await getSales(supabase, {}); // Adjust query as needed.

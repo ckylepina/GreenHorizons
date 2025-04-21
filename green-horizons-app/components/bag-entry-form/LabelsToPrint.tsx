@@ -76,13 +76,13 @@ export default function LabelsToPrint({
                 flexDirection: 'column',
                 justifyContent: 'center',
                 textAlign: 'left',
-                fontSize: '9pt',
+                fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1.5',
                 paddingRight: '0.05in',
               }}
             >
-              <div>{getHarvestRoomName(bag.harvest_room_id)}</div>
+              <div>H{getHarvestRoomName(bag.harvest_room_id)}</div>
               <div>{getStrainName(bag.strain_id)}</div>
               <div>{getBagSizeName(bag.size_category_id)}</div>
               <div>
@@ -102,7 +102,7 @@ export default function LabelsToPrint({
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
-                transform: 'scale(1.5)',
+                transform: 'scale(2.9)',
                 transformOrigin: 'center',
               }}
             >
