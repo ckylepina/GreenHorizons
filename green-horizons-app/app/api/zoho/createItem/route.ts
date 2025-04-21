@@ -1,148 +1,105 @@
-// app/api/zoho/createItem/route.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-interface LocationEntry {
-  location_id:          string;
-  initial_stock:        number;
-  initial_stock_rate:   number;
-}
-
-interface ItemTaxPreference {
-  tax_id:             number;
-  tax_specification:  string;
+interface PackageDetails {
+  weight:      number;
+  weight_unit: string;
 }
 
 interface CustomField {
-  customfield_id:     string;
-  value:              string;
+  customfield_id: string;
+  value:          string;
 }
 
 interface CreateItemBody {
-  group_id?:              number;
-  group_name?:            string;
-  unit?:                  string;
-  documents?:             string[];
-  item_type?:             string;
-  product_type?:          string;
-  is_taxable?:            boolean;
-  tax_id?:                number;
-  description?:           string;
-  purchase_account_id?:   number;
-  inventory_account_id?:  number;
-  attribute_name1?:       string;
-  name:                   string;   // required
-  rate:                   number;   // required
-  purchase_rate:          number;
-  reorder_level?:         number;
-  locations?:             LocationEntry[];
-  vendor_id?:             number;
-  vendor_name?:           string;
-  sku:                    string;   // required
-  upc?:                   string;
-  ean?:                   string;
-  isbn?:                  string;
-  part_number?:           string;
-  attribute_option_name1?:string;
-  purchase_description?:  string;
-  item_tax_preferences?:  ItemTaxPreference[];
-  hsn_or_sac?:            number;
-  sat_item_key_code?:     string;
-  unitkey_code?:          string;
-  custom_fields?:         CustomField[];
+  name:            string;
+  sku:             string;
+  rate:            number;
+  purchase_rate:   number;
+  unit?:           string;
+  track_inventory?:boolean;
+  package_details?: PackageDetails;
+  custom_fields?:   CustomField[];
 }
 
-// type‐guard
-function isRecord(x: unknown): x is Record<string, unknown> {
+// simple object‑guard
+function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) Parse & validate JSON
+  // 1) parse JSON
   let raw: unknown;
   try {
     raw = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (!isRecord(raw)) {
-    return NextResponse.json({ error: 'Expected an object' }, { status: 400 });
+  if (!isObject(raw)) {
+    return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 });
   }
   const body = raw as Record<string, unknown>;
 
-  // Required fields
-  const name = String(body.name ?? '').trim();
-  const sku  = String(body.sku  ?? '').trim();
-  const rate = Number(body.rate);
+  // 2) required fields
+  const name          = String(body.name ?? '').trim();
+  const sku           = String(body.sku  ?? '').trim();
+  const rate          = Number(body.rate);
   const purchase_rate = Number(body.purchase_rate);
 
   if (!name || !sku || isNaN(rate) || isNaN(purchase_rate)) {
     return NextResponse.json(
-      { error: 'Missing or invalid required fields: name, sku, rate, purchase_rate' },
+      { error: 'Missing or invalid name, sku, rate or purchase_rate' },
       { status: 400 }
     );
   }
 
-  // 2) Build payload exactly as Zoho expects
+  // 3) build payload
   const payload: CreateItemBody = {
-    // optional envelope fields—only include if present
-    ...(body.group_id               !== undefined && { group_id: Number(body.group_id) }),
-    ...(body.group_name             !== undefined && { group_name: String(body.group_name) }),
-    ...(body.unit                   !== undefined && { unit: String(body.unit) }),
-    ...(body.documents              !== undefined && { documents: body.documents as string[] }),
-    ...(body.item_type              !== undefined && { item_type: String(body.item_type) }),
-    ...(body.product_type           !== undefined && { product_type: String(body.product_type) }),
-    ...(body.is_taxable             !== undefined && { is_taxable: Boolean(body.is_taxable) }),
-    ...(body.tax_id                 !== undefined && { tax_id: Number(body.tax_id) }),
-    ...(body.description            !== undefined && { description: String(body.description) }),
-    ...(body.purchase_account_id    !== undefined && { purchase_account_id: Number(body.purchase_account_id) }),
-    ...(body.inventory_account_id   !== undefined && { inventory_account_id: Number(body.inventory_account_id) }),
-    ...(body.attribute_name1        !== undefined && { attribute_name1: String(body.attribute_name1) }),
     name,
+    sku,
     rate,
     purchase_rate,
-    ...(body.reorder_level          !== undefined && { reorder_level: Number(body.reorder_level) }),
-    ...(Array.isArray(body.locations) && { locations: body.locations as LocationEntry[] }),
-    ...(body.vendor_id              !== undefined && { vendor_id: Number(body.vendor_id) }),
-    ...(body.vendor_name            !== undefined && { vendor_name: String(body.vendor_name) }),
-    sku,
-    ...(body.upc                    !== undefined && { upc: String(body.upc) }),
-    ...(body.ean                    !== undefined && { ean: String(body.ean) }),
-    ...(body.isbn                   !== undefined && { isbn: String(body.isbn) }),
-    ...(body.part_number            !== undefined && { part_number: String(body.part_number) }),
-    ...(body.attribute_option_name1 !== undefined && { attribute_option_name1: String(body.attribute_option_name1) }),
-    ...(body.purchase_description   !== undefined && { purchase_description: String(body.purchase_description) }),
-    ...(Array.isArray(body.item_tax_preferences) && {
-      item_tax_preferences: body.item_tax_preferences as ItemTaxPreference[]
-    }),
-    ...(body.hsn_or_sac             !== undefined && { hsn_or_sac: Number(body.hsn_or_sac) }),
-    ...(body.sat_item_key_code      !== undefined && { sat_item_key_code: String(body.sat_item_key_code) }),
-    ...(body.unitkey_code           !== undefined && { unitkey_code: String(body.unitkey_code) }),
-    ...(Array.isArray(body.custom_fields) && {
-      custom_fields: body.custom_fields as CustomField[]
-    }),
+    unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
+    track_inventory: typeof body.track_inventory === 'boolean' ? body.track_inventory : true,
   };
 
-  console.log(
-    '🧪 [Server] createItem payload →',
-    JSON.stringify(payload, null, 2)
-  );
+  // 3a) optional package_details
+  if (isObject(body.package_details)) {
+    const pd = body.package_details as Record<string, unknown>;
+    const w  = Number(pd.weight);
+    const wu = String(pd.weight_unit ?? '');
+    if (!isNaN(w) && wu) {
+      payload.package_details = { weight: w, weight_unit: wu };
+    }
+  }
 
-  // 3) Get OAuth token & Org ID
+  // 3b) optional custom_fields
+  if (Array.isArray(body.custom_fields)) {
+    payload.custom_fields = (body.custom_fields as unknown[])
+      .filter(isObject)
+      .map((cf) => ({
+        customfield_id: String((cf as Record<string, unknown>).customfield_id ?? ''),
+        value:          String((cf as Record<string, unknown>).value ?? ''),
+      }));
+  }
+
+  console.log('🧪 [Server] createItem payload:', JSON.stringify(payload, null, 2));
+
+  // 4) get org ID + token
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
-    return NextResponse.json({ error: 'Org ID not configured' }, { status: 500 });
+    return NextResponse.json({ error: 'Organization ID not set' }, { status: 500 });
   }
   let token: string;
   try {
     token = await refreshZohoAccessToken();
-  } catch (err) {
-    console.error('Auth error:', err);
+  } catch (e) {
+    console.error('Auth error:', e);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 4) Call Zoho
+  // 5) call Zoho
   const url = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}`;
   let resp: Response;
   try {
@@ -154,27 +111,26 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(payload),
     });
-  } catch (networkErr) {
-    console.error('Network error calling Zoho:', networkErr);
+  } catch (netErr) {
+    console.error('Network error:', netErr);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 5) Parse Zoho’s response (or raw text if JSON fails)
+  // 6) parse response
   let zohoBody: unknown;
   try {
     zohoBody = await resp.json();
   } catch {
-    const rawText = await resp.text();
-    console.error('Failed to parse Zoho response JSON:', rawText);
-    zohoBody = { raw: rawText };
+    const txt = await resp.text();
+    console.error('Non-JSON Zoho response:', txt);
+    zohoBody = { raw: txt };
   }
 
-  // 6) Forward error or success
   if (!resp.ok) {
-    console.error('🛑 Zoho responded with status', resp.status, zohoBody);
+    console.error('🛑 Zoho createItem error:', resp.status, zohoBody);
     return NextResponse.json(zohoBody, { status: resp.status });
   }
 
-  console.log('✅ Zoho createItem succeeded:', zohoBody);
+  console.log('✅ Zoho createItem success:', zohoBody);
   return NextResponse.json(zohoBody);
 }

@@ -1,4 +1,3 @@
-// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -33,16 +32,14 @@ export default function BagEntryForm({
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [bulkEditGroupId, setBulkEditGroupId] = useState<string | null>(null);
 
-  // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group locally, then create each bag in Zoho individually
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     setLoading(true);
     setMessages([]);
 
     try {
-      // -- a) Insert into Supabase
+      // 1a) Insert into Supabase
       const { data: insertedRows, error: insertErr } = await supabase
         .from('bags')
         .insert(newBagsData)
@@ -53,16 +50,16 @@ export default function BagEntryForm({
         setMessages([{ type: 'error', text: 'Failed to insert bags.' }]);
         return;
       }
-      if (!insertedRows || !insertedRows.length) {
+      if (!insertedRows?.length) {
         setMessages([{ type: 'error', text: 'No bags inserted.' }]);
         return;
       }
 
       setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
 
-      // -- b) For each bag, build Zoho payload and POST to /api/zoho/createItem
+      // 1b) Sync each bag to Zoho
       await Promise.all(insertedRows.map(async (bag) => {
-        // look up the human names:
+        // look up names
         const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
           supabase.from('harvest_rooms').select('name').eq('id', bag.harvest_room_id!).single(),
           supabase.from('strains').select('name').eq('id', bag.strain_id!).single(),
@@ -70,8 +67,12 @@ export default function BagEntryForm({
         ]);
 
         const harvestValue = (hr?.name ?? bag.harvest_room_id!).toString().trim() || bag.harvest_room_id!;
-        const strainName  = (str?.name ?? 'Unknown').toString();
-        const sizeName    = (sz?.name ?? 'Unknown').toString();
+        const strainName  = (str?.name  ?? 'Unknown').toString();
+        const sizeName    = (sz?.name   ?? 'Unknown').toString();
+        const rawWeight   = bag.weight;
+        const weight      = Number.isInteger(rawWeight)
+          ? rawWeight
+          : Number(rawWeight.toFixed(2));
 
         const payload = {
           name:            strainName,
@@ -80,6 +81,7 @@ export default function BagEntryForm({
           purchase_rate:   0,
           unit:            'qty',
           track_inventory: true,
+          package_details: { weight, weight_unit: 'lb' },
           custom_fields: [
             { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
             { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
@@ -99,11 +101,10 @@ export default function BagEntryForm({
 
         if (!resp.ok) {
           console.error('🛑 Failed to sync bag to Zoho:', json);
-          // you could choose to surface an error message here
         }
       }));
 
-      // -- c) Record this group in your UI
+      // 1c) Add to UI
       const newGroup: InsertedGroup = {
         groupId:   `group-${Date.now()}`,
         bags:       insertedRows,
@@ -122,7 +123,6 @@ export default function BagEntryForm({
     }
   }
 
-  // 2) Bulk edit logic (unchanged)
   async function applyBulkEdit(updateFields: Partial<BagRecord>) {
     if (!bulkEditGroupId) return;
     setLoading(true);
@@ -157,7 +157,6 @@ export default function BagEntryForm({
     }
   }
 
-  // 3) Handlers
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
@@ -168,7 +167,6 @@ export default function BagEntryForm({
     setBulkEditGroupId(null);
   }
 
-  // 4) Render
   return (
     <div>
       <BagInsertForm
