@@ -7,6 +7,9 @@ import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
 import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
+const HARVEST_FIELD_ID = '6118005000000123236';
+const SIZE_FIELD_ID    = '6118005000000280001';
+
 interface BagEntryFormProps {
   serverStrains: Strain[];
   serverBagSizes: BagSize[];
@@ -33,90 +36,74 @@ export default function BagEntryForm({
   // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group + sync to Zoho (nested custom_fields with label/value)
+  // 1) Insert new group locally, then create each bag in Zoho individually
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     setLoading(true);
     setMessages([]);
 
     try {
-      // 1a) Insert into Supabase
-      const { data: insertedRows, error } = await supabase
+      // -- a) Insert into Supabase
+      const { data: insertedRows, error: insertErr } = await supabase
         .from('bags')
         .insert(newBagsData)
         .select();
 
-      if (error || !insertedRows?.length) {
-        console.error('Error inserting bags:', error);
-        setMessages([{
-          type: 'error',
-          text: error ? 'Failed to insert bags.' : 'No bags inserted.'
-        }]);
+      if (insertErr) {
+        console.error('Error inserting bags:', insertErr);
+        setMessages([{ type: 'error', text: 'Failed to insert bags.' }]);
+        return;
+      }
+      if (!insertedRows || !insertedRows.length) {
+        setMessages([{ type: 'error', text: 'No bags inserted.' }]);
         return;
       }
 
       setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
 
-      // 1b) Build Zoho payload with nested custom_fields
-      const itemsPayload = await Promise.all(
-        insertedRows.map(async (bag) => {
-          const [
-            { data: hr },
-            { data: str },
-            { data: sz },
-          ] = await Promise.all([
-            supabase
-              .from('harvest_rooms')
-              .select('name')
-              .eq('id', bag.harvest_room_id!)
-              .single(),
-            supabase
-              .from('strains')
-              .select('name')
-              .eq('id', bag.strain_id!)
-              .single(),
-            supabase
-              .from('bag_size_categories')
-              .select('name')
-              .eq('id', bag.size_category_id!)
-              .single(),
-          ]);
+      // -- b) For each bag, build Zoho payload and POST to /api/zoho/createItem
+      await Promise.all(insertedRows.map(async (bag) => {
+        // look up the human names:
+        const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
+          supabase.from('harvest_rooms').select('name').eq('id', bag.harvest_room_id!).single(),
+          supabase.from('strains').select('name').eq('id', bag.strain_id!).single(),
+          supabase.from('bag_size_categories').select('name').eq('id', bag.size_category_id!).single(),
+        ]);
 
-          const harvestValue = (hr?.name ?? bag.harvest_room_id!).toString().trim() || bag.harvest_room_id!;
-          const strainName  = (str?.name ?? 'Unknown').toString();
-          const sizeName    = (sz?.name ?? 'Unknown').toString();
+        const harvestValue = (hr?.name ?? bag.harvest_room_id!).toString().trim() || bag.harvest_room_id!;
+        const strainName  = (str?.name ?? 'Unknown').toString();
+        const sizeName    = (sz?.name ?? 'Unknown').toString();
 
-          return {
-            sku:             bag.id,
-            name:            strainName,
-            rate:            0,
-            purchase_rate:   0,
-            unit:            'qty',
-            track_inventory: true,
-            custom_fields: [
-              { label: 'Harvest #', value: harvestValue },
-              { label: 'Size',      value: sizeName     },
-            ],
-          };
-        })
-      );
+        const payload = {
+          name:            strainName,
+          sku:             bag.id,
+          rate:            0,
+          purchase_rate:   0,
+          unit:            'qty',
+          track_inventory: true,
+          custom_fields: [
+            { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
+            { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
+          ],
+        };
 
-      // 1c) POST to your createItemGroup route
-      console.log('🧪 [Client] itemsPayload →', JSON.stringify(itemsPayload, null, 2));
+        console.log('🧪 [Client] createItem payload:', payload);
 
-      const resp = await fetch('/api/zoho/createItemGroup', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ items: itemsPayload }),
-      });
-      const zohoRes = await resp.json();
-      console.log('🧪 [Client] Zoho createItemGroup response:', zohoRes);
+        const resp = await fetch('/api/zoho/createItem', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        });
 
-      if (!resp.ok) {
-        console.error('🛑 Zoho error:', zohoRes);
-        setMessages([{ type: 'error', text: 'Failed to sync to Zoho.' }]);
-      }
+        const json = await resp.json();
+        console.log('🧪 [Client] Zoho createItem response:', json);
 
-      // 1d) Update UI groups
+        if (!resp.ok) {
+          console.error('🛑 Failed to sync bag to Zoho:', json);
+          // you could choose to surface an error message here
+        }
+      }));
+
+      // -- c) Record this group in your UI
       const newGroup: InsertedGroup = {
         groupId:   `group-${Date.now()}`,
         bags:       insertedRows,
@@ -126,8 +113,9 @@ export default function BagEntryForm({
         qrCodes:    insertedRows.map((b) => b.qr_code ?? ''),
       };
       setAllGroups((prev) => [...prev, newGroup]);
+
     } catch (err) {
-      console.error('Unexpected error:', err);
+      console.error('Unexpected error in insertNewGroup:', err);
       setMessages([{ type: 'error', text: 'Unexpected error occurred.' }]);
     } finally {
       setLoading(false);
@@ -159,7 +147,8 @@ export default function BagEntryForm({
       } else {
         setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
       }
-    } catch {
+    } catch (e) {
+      console.error('Unexpected bulk‑edit error:', e);
       setMessages([{ type: 'error', text: 'Unexpected error during bulk edit.' }]);
     } finally {
       setLoading(false);
@@ -168,7 +157,7 @@ export default function BagEntryForm({
     }
   }
 
-  // 3) Handlers to toggle bulk‑edit mode
+  // 3) Handlers
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
@@ -207,9 +196,9 @@ export default function BagEntryForm({
         serverBagSizes={serverBagSizes}
       />
 
-      {messages.map((msg, i) => (
+      {messages.map((msg, idx) => (
         <p
-          key={i}
+          key={idx}
           className={`mt-2 text-center text-sm ${
             msg.type === 'error' ? 'text-red-600' : 'text-green-600'
           }`}
