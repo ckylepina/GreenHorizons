@@ -129,6 +129,8 @@ const EditBagScanClient: React.FC<EditBagScanClientProps> = ({
     const group = groups.find(g => g.key === groupKey);
     if (!group) return;
     const bagIds = group.bags.map(b => b.id);
+
+    // 1) Update Supabase
     const { data, error } = await supabase
       .from('bags')
       .update(fields)
@@ -138,14 +140,34 @@ const EditBagScanClient: React.FC<EditBagScanClientProps> = ({
       alert('Error updating group: ' + error.message);
       return;
     }
-    if (data) {
-      setScannedBags(prev =>
-        prev.map(bag => bagIds.includes(bag.id) ? { ...bag, ...fields } : bag)
-      );
-      alert('Group updated successfully.');
-      setEditingGroupKey(null);
-      setEditFields({});
-    }
+
+    // 2) Push same changes into Zoho for each bag
+    await Promise.all(
+      data!.map(async (bag) => {
+        await fetch('/api/zoho/updateItem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sku: bag.id,
+            name: initialStrains.find(s => s.id === fields.strain_id)?.name ?? bag.id,
+            cf_harvest: fields.harvest_room_id ?? '',
+            cf_size: fields.size_category_id ?? '',
+            // if you also want to update rate/purchase_rate:
+            rate: 0,
+            purchase_rate: 0,
+          }),
+        });
+      })
+    );
+
+    // 3) Reflect changes locally
+    setScannedBags(prev =>
+      prev.map(bag => bagIds.includes(bag.id) ? { ...bag, ...fields } : bag)
+    );
+
+    alert('Group updated in both Supabase & Zoho.');
+    setEditingGroupKey(null);
+    setEditFields({});
   };
 
   // Print new labels for a group.
