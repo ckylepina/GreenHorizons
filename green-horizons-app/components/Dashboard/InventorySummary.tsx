@@ -62,11 +62,22 @@ export default function InventorySummary({
 
   // Zoho delete helper
   async function deleteInZoho(sku: string) {
-    await fetch('/api/zoho/deleteItem', {
+    console.log('[Client] Deleting Zoho SKU:', sku);
+    const resp = await fetch('/api/zoho/deleteItem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sku }),
     });
+    let body: unknown;
+    try {
+      body = await resp.json();
+    } catch {
+      body = await resp.text();
+    }
+    console.log('[Client] DELETE /api/zoho/deleteItem ->', resp.status, body);
+    if (!resp.ok) {
+      throw new Error(`Zoho delete failed ${resp.status}`);
+    }
   }
 
   // Actually perform delete after confirmation

@@ -4,41 +4,44 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-// A small type‑guard for checking plain objects
+// Helper to narrow unknown to an object
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) Parse & validate request body
+  // 1) Parse + validate request body
   let body: unknown;
   try {
     body = await request.json();
   } catch {
+    console.error('[Server] Invalid JSON in request body');
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
   if (!isRecord(body)) {
-    return NextResponse.json({ error: 'Expected an object' }, { status: 400 });
+    console.error('[Server] Request body is not an object', body);
+    return NextResponse.json({ error: 'Expected JSON object' }, { status: 400 });
   }
   const skuRaw = body['sku'];
   if (typeof skuRaw !== 'string' || skuRaw.trim() === '') {
+    console.error('[Server] Missing or invalid sku:', skuRaw);
     return NextResponse.json({ error: 'Missing or invalid sku' }, { status: 400 });
   }
-  const sku = skuRaw;
+  const sku = skuRaw.trim();
 
-  // 2) Ensure org ID is configured
+  // 2) Ensure organization ID is set
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
+    console.error('[Server] ZOHO_ORGANIZATION_ID not configured');
     return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
   }
 
-  // 3) Refresh Zoho access token
+  // 3) Refresh Zoho OAuth token
   let token: string;
   try {
     token = await refreshZohoAccessToken();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('Auth error refreshing Zoho token:', msg);
+    console.error('[Server] Error refreshing Zoho token:', err);
     return NextResponse.json({ error: 'Auth failed' }, { status: 500 });
   }
 
@@ -46,8 +49,10 @@ export async function POST(request: NextRequest) {
   const url = `https://www.zohoapis.com/inventory/v1/items/${encodeURIComponent(
     sku
   )}?organization_id=${orgId}`;
+  console.log('[Server] DELETE Zoho item URL:', url);
+
   let resp: Response;
-  let zohoResponseBody: unknown;
+  let zohoBody: unknown;
   try {
     resp = await fetch(url, {
       method: 'DELETE',
@@ -56,29 +61,32 @@ export async function POST(request: NextRequest) {
         Authorization: `Zoho-oauthtoken ${token}`,
       },
     });
-    // Zoho sometimes returns non‑JSON on error, so we try JSON first
     const text = await resp.text();
     try {
-      zohoResponseBody = JSON.parse(text);
+      zohoBody = JSON.parse(text);
     } catch {
-      zohoResponseBody = text;
+      zohoBody = text;
     }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('Network error calling Zoho DELETE:', msg);
+    console.error('[Server] Network error calling Zoho DELETE:', err);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 5) Handle Zoho response
+  console.log('[Server] Zoho DELETE response status:', resp.status, zohoBody);
+
+  // 5) Handle not-found as a no-op
   if (resp.status === 404) {
-    console.warn(`Zoho item "${sku}" not found; skipping deletion.`);
+    console.warn(`[Server] Zoho item "${sku}" not found; skipping deletion.`);
     return NextResponse.json({ status: 'not_found' });
   }
+
+  // 6) Handle other errors
   if (!resp.ok) {
-    console.error('Zoho DELETE returned error status:', resp.status, zohoResponseBody);
-    return NextResponse.json({ error: zohoResponseBody }, { status: resp.status });
+    console.error('[Server] Zoho DELETE returned error:', resp.status, zohoBody);
+    return NextResponse.json({ error: zohoBody }, { status: resp.status });
   }
 
-  // 6) Success
-  return NextResponse.json({ status: 'deleted', detail: zohoResponseBody });
+  // 7) Success
+  console.log('[Server] Zoho item deleted successfully for SKU:', sku);
+  return NextResponse.json({ status: 'deleted', detail: zohoBody });
 }
