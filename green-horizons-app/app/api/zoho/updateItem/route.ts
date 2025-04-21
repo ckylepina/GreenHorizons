@@ -16,7 +16,7 @@ interface UpdateBody {
 }
 
 export async function POST(request: NextRequest) {
-  // 1) parse + validate
+  // 1) parse+validate
   let body: unknown;
   try {
     body = await request.json();
@@ -44,13 +44,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Auth failed' }, { status: 500 });
   }
 
-  // 3) build minimal payload
+  // 3) Lookup item_id by SKU
+  const lookupUrl = `https://www.zohoapis.com/inventory/v1/items?sku=${encodeURIComponent(
+    update.sku
+  )}&organization_id=${orgId}`;
+  let lookupResp: Response;
+  let lookupJson: any;
+  try {
+    lookupResp = await fetch(lookupUrl, {
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    lookupJson = await lookupResp.json();
+  } catch (err) {
+    console.error('Network error during SKU lookup:', err);
+    return NextResponse.json({ error: 'Network error' }, { status: 502 });
+  }
+  if (!lookupResp.ok || !Array.isArray(lookupJson.items) || lookupJson.items.length === 0) {
+    console.error('SKU lookup failed:', lookupResp.status, lookupJson);
+    return NextResponse.json({ error: 'Item not found in Zoho' }, { status: 404 });
+  }
+  const itemId = lookupJson.items[0].item_id;
+  console.log('🧪 [Server] Found item_id for SKU', update.sku, '→', itemId);
+
+  // 4) Build update‐payload
   const payload: Record<string, unknown> = {};
   if (update.name     !== undefined) payload.name           = update.name;
   if (update.rate     !== undefined) payload.rate           = update.rate;
   if (update.purchase_rate !== undefined) payload.purchase_rate = update.purchase_rate;
 
-  // custom_fields is an array
   const cf: Array<{ customfield_id: string; value: string }> = [];
   if (update.cf_harvest !== undefined) {
     cf.push({ customfield_id: HARVEST_FIELD_ID, value: update.cf_harvest });
@@ -62,17 +83,16 @@ export async function POST(request: NextRequest) {
     payload.custom_fields = cf;
   }
 
-  // 4) send to Zoho
-  const url = `https://www.zohoapis.com/inventory/v1/items/${encodeURIComponent(
-    update.sku
+  // 5) PUT to Zoho
+  const updateUrl = `https://www.zohoapis.com/inventory/v1/items/${encodeURIComponent(
+    itemId
   )}?organization_id=${orgId}`;
-
   console.log('🧪 [Server] updateItem payload →', JSON.stringify(payload, null, 2));
 
-  let resp: Response;
-  let zohoBody: unknown;
+  let updateResp: Response;
+  let updateJson: unknown;
   try {
-    resp = await fetch(url, {
+    updateResp = await fetch(updateUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
@@ -80,23 +100,17 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(payload),
     });
-  } catch (networkErr) {
-    console.error('Network error calling Zoho:', networkErr);
+    updateJson = await updateResp.json();
+  } catch (err) {
+    console.error('Network error calling Zoho update:', err);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  try {
-    zohoBody = await resp.json();
-  } catch (parseErr) {
-    console.error('Failed to parse Zoho response:', parseErr);
-    zohoBody = await resp.text();
+  if (!updateResp.ok) {
+    console.error('Zoho updateItem error:', updateResp.status, updateJson);
+    return NextResponse.json(updateJson, { status: updateResp.status });
   }
 
-  if (!resp.ok) {
-    console.error('Zoho updateItem error:', resp.status, zohoBody);
-    return NextResponse.json(zohoBody, { status: resp.status });
-  }
-
-  console.log('✅ Zoho updateItem success:', zohoBody);
-  return NextResponse.json(zohoBody);
+  console.log('✅ Zoho updateItem success:', updateJson);
+  return NextResponse.json(updateJson);
 }
