@@ -7,9 +7,6 @@ import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
 import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
-const HARVEST_FIELD_ID = '6118005000000123236';
-const SIZE_FIELD_ID    = '6118005000000280001';
-
 interface BagEntryFormProps {
   serverStrains: Strain[];
   serverBagSizes: BagSize[];
@@ -36,7 +33,7 @@ export default function BagEntryForm({
   // Reverse harvest rooms so “bottom” is first
   const reversedRooms = [...serverHarvestRooms].reverse();
 
-  // 1) Insert new group + sync to Zoho (nested custom_fields)
+  // 1) Insert new group + sync to Zoho (nested custom_fields with label/value)
   async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
     setLoading(true);
     setMessages([]);
@@ -96,16 +93,16 @@ export default function BagEntryForm({
             unit:            'qty',
             track_inventory: true,
             custom_fields: [
-              { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
-              { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
+              { label: 'Harvest #', value: harvestValue },
+              { label: 'Size',      value: sizeName     },
             ],
           };
         })
       );
 
+      // 1c) POST to your createItemGroup route
       console.log('🧪 [Client] itemsPayload →', JSON.stringify(itemsPayload, null, 2));
 
-      // 1c) POST to your createItemGroup route
       const resp = await fetch('/api/zoho/createItemGroup', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },

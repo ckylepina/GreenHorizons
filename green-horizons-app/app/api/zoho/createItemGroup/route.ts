@@ -4,8 +4,8 @@ import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
 interface CustomField {
-  customfield_id: string;
-  value:           string;
+  label: string;
+  value: string;
 }
 
 interface IncomingItem {
@@ -24,36 +24,40 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 
 export async function POST(request: NextRequest) {
   // 1) Parse + validate
-  let json: unknown;
+  let body: unknown;
   try {
-    json = await request.json();
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (!isRecord(json) || !Array.isArray(json.items)) {
+  if (!isRecord(body) || !Array.isArray(body.items)) {
     return NextResponse.json(
       { error: 'Expected { items: [...] }' },
       { status: 400 }
     );
   }
 
-  // Narrow to our item shape
-  const items = (json.items as unknown[]).filter(isRecord).map((it) => ({
-    sku:             String(it.sku),
-    name:            String(it.name),
-    rate:            Number(it.rate),
-    purchase_rate:   Number(it.purchase_rate),
-    unit:            String(it.unit),
-    track_inventory: Boolean(it.track_inventory),
-    custom_fields:   Array.isArray(it.custom_fields)
-                       ? it.custom_fields.filter(isRecord).map(cf => ({
-                           customfield_id: String(cf.customfield_id),
-                           value:           String(cf.value),
-                         }))
-                       : [],
-  })) as IncomingItem[];
+  // 2) Narrow each entry into our IncomingItem
+  const items: IncomingItem[] = body.items
+    .filter(isRecord)
+    .map((it) => ({
+      sku:             String(it.sku),
+      name:            String(it.name),
+      rate:            Number(it.rate),
+      purchase_rate:   Number(it.purchase_rate),
+      unit:            String(it.unit),
+      track_inventory: Boolean(it.track_inventory),
+      custom_fields: Array.isArray(it.custom_fields)
+        ? it.custom_fields
+            .filter(isRecord)
+            .map((cf) => ({
+              label: String(cf.label),
+              value: String(cf.value),
+            }))
+        : [],
+    }));
 
-  // 2) OAuth
+  // 3) OAuth
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json(
@@ -61,7 +65,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-
   let token: string;
   try {
     token = await refreshZohoAccessToken();
@@ -73,16 +76,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3) Build Group payload
+  // 4) Build group payload
   const payload = {
     group_name: 'Bags',
     unit:       'qty' as const,
     items,
   };
+  console.log(
+    '🧪 [Server] createItemGroup payload:',
+    JSON.stringify(payload, null, 2)
+  );
 
-  console.log('🧪 [Server] createItemGroup payload:', JSON.stringify(payload, null, 2));
-
-  // 4) Call Zoho
+  // 5) Call Zoho
   const url = `https://www.zohoapis.com/inventory/v1/itemgroups?organization_id=${orgId}`;
   let resp: Response;
   try {
@@ -99,7 +104,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 5) Parse Zoho’s response or raw text
+  // 6) Parse Zoho’s response
   let zohoBody: unknown;
   try {
     zohoBody = await resp.json();
@@ -109,7 +114,7 @@ export async function POST(request: NextRequest) {
     zohoBody = { raw: txt };
   }
 
-  // 6) Forward error or success
+  // 7) Forward status
   if (!resp.ok) {
     console.error('🛑 Zoho error status:', resp.status, zohoBody);
     return NextResponse.json(zohoBody, { status: resp.status });
