@@ -1,3 +1,4 @@
+// components/EditBagScanClient.tsx
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
@@ -50,15 +51,13 @@ const EditBagScanClient: React.FC<EditBagScanClientProps> = ({
   const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
   const [showScanner, setShowScanner] = useState(false);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
-  // Bulk edit fields for the currently editing group.
   const [editFields, setEditFields] = useState<Partial<BagRecord>>({});
   const [isProcessingScan, setIsProcessingScan] = useState(false);
   const lastScannedCodeRef = useRef<string | null>(null);
 
-  // Group the scanned bags.
   const groups = useMemo(() => groupBags(scannedBags), [scannedBags]);
 
-  // Helper lookup functions.
+  // Lookup helpers
   const getStrainName = (id?: string | null) =>
     initialStrains.find((s) => s.id === id)?.name || 'Unknown';
   const getHarvestRoomName = (id?: string | null) =>
@@ -66,10 +65,9 @@ const EditBagScanClient: React.FC<EditBagScanClientProps> = ({
   const getBagSizeName = (id?: string | null) =>
     initialBagSizes.find((b) => b.id === id)?.name || 'Unknown';
 
-  // QR scanning: verify the bag is in_inventory.
+  // Scan handler
   const handleScanBag = async (qrValue: string) => {
-    if (!qrValue) return;
-    if (lastScannedCodeRef.current === qrValue) return;
+    if (!qrValue || lastScannedCodeRef.current === qrValue) return;
     lastScannedCodeRef.current = qrValue;
 
     const { data, error } = await supabase
@@ -80,327 +78,248 @@ const EditBagScanClient: React.FC<EditBagScanClientProps> = ({
       .single();
 
     if (error) {
-      alert('Bag not found or not available for QR code: ' + qrValue);
-      console.error('Error fetching bag by QR code:', error);
-      return;
-    }
-    if (data) {
+      alert('Bag not found or not available: ' + qrValue);
+      console.error(error);
+    } else if (data) {
       const bag: BagRecord = {
-        id: data.id || qrValue,
-        current_status: data.current_status || 'in_inventory',
-        harvest_room_id: data.harvest_room_id || null,
-        strain_id: data.strain_id || null,
-        size_category_id: data.size_category_id || '',
-        created_at: data.created_at || new Date().toISOString(),
-        weight: data.weight || 1,
-        qr_code: data.qr_code || qrValue,
-        employee_id: data.employee_id || null,
+        id: data.id,
+        current_status: data.current_status,
+        harvest_room_id: data.harvest_room_id,
+        strain_id: data.strain_id,
+        size_category_id: data.size_category_id,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        weight: data.weight,
+        qr_code: data.qr_code,
+        employee_id: data.employee_id,
         tenant_id: data.tenant_id,
-        updated_at: data.updated_at || null,
       };
-
-      setScannedBags(prev => {
-        if (prev.some(b => b.id === bag.id)) {
-          alert('Bag already scanned.');
-          return prev;
-        } else {
-          return [...prev, bag];
-        }
-      });
+      setScannedBags((prev) => prev.some(b => b.id === bag.id) ? prev : [...prev, bag]);
     }
-    setTimeout(() => {
-      lastScannedCodeRef.current = null;
-    }, 1000);
+
+    setTimeout(() => (lastScannedCodeRef.current = null), 1000);
   };
 
-  const handleScan = (detectedCodes: IDetectedBarcode[]) => {
+  const handleScan = (detected: IDetectedBarcode[]) => {
     if (isProcessingScan) return;
     setIsProcessingScan(true);
-    detectedCodes.forEach(({ rawValue }) => {
-      if (rawValue) {
-        handleScanBag(rawValue);
-      }
-    });
+    detected.forEach(({ rawValue }) => { if (rawValue) handleScanBag(rawValue); });
     setTimeout(() => setIsProcessingScan(false), 1000);
   };
 
-  // Update the group in the database.
+  // Save edits both locally, in Supabase, AND push to Zoho
   const updateGroup = async (groupKey: string, fields: Partial<BagRecord>) => {
     const group = groups.find(g => g.key === groupKey);
     if (!group) return;
     const bagIds = group.bags.map(b => b.id);
 
     // 1) Update Supabase
-    const { data, error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from('bags')
       .update(fields)
       .in('id', bagIds)
       .select();
     if (error) {
-      alert('Error updating group: ' + error.message);
+      alert('Supabase update error: ' + error.message);
       return;
     }
 
-    // 2) Push same changes into Zoho for each bag
-    // …
+    // 2) Build the human‑readable values
+    const harvestName = fields.harvest_room_id
+      ? getHarvestRoomName(fields.harvest_room_id)
+      : undefined;
+    const sizeName = fields.size_category_id
+      ? getBagSizeName(fields.size_category_id)
+      : undefined;
+    const strainName = fields.strain_id
+      ? getStrainName(fields.strain_id)
+      : undefined;
+
+    // 3) Push each to Zoho
     await Promise.all(
-      data!.map(async (bag) => {
-        const payload = {
-          sku: bag.id,
-          name: initialStrains.find(s => s.id === fields.strain_id)?.name ?? bag.id,
-          cf_harvest: fields.harvest_room_id ?? '',
-          cf_size:    fields.size_category_id ?? '',
-          rate: 0,
-          purchase_rate: 0,
-        };
+      (updatedRows || []).map(async (bag) => {
+        const body: Record<string, unknown> = { sku: bag.id };
+        if (strainName)      body.name          = strainName;
+        if (harvestName)     body.cf_harvest    = harvestName;
+        if (sizeName)        body.cf_size       = sizeName;
+        if (fields.weight != null) body.Weight   = fields.weight;
 
-        console.log('🛠️ [Client] calling updateItem with:', payload);
-
+        console.log('🛠️ [Client] calling updateItem with:\n', body);
         const resp = await fetch('/api/zoho/updateItem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         });
-
-        let json: unknown;
-        try { json = await resp.json(); }
-        catch { json = await resp.text(); }
-
-        console.log(`🛠️ [Client] updateItem response status=${resp.status}`, json);
-        if (!resp.ok) {
-          throw new Error(`Zoho update failed: ${resp.status}`);
-        }
+        const json = await resp.json();
+        console.log('🛠️ [Client] updateItem response status=' + resp.status, json);
       })
     );
 
-    // 3) Reflect changes locally
+    // 4) Reflect locally & close form
     setScannedBags(prev =>
-      prev.map(bag => bagIds.includes(bag.id) ? { ...bag, ...fields } : bag)
+      prev.map(b => bagIds.includes(b.id) ? { ...b, ...fields } : b)
     );
-
-    alert('Group updated in both Supabase & Zoho.');
     setEditingGroupKey(null);
     setEditFields({});
+    alert('Updated in both Supabase & Zoho!');
   };
 
-  // Print new labels for a group.
+  // Printing labels (unchanged)
   const printLabelsForGroup = (groupKey: string) => {
-    const printableArea = document.getElementById(`printable-area-${groupKey}`);
-    if (printableArea) {
-      const htmlContent = printableArea.innerHTML.trim();
-      if (!htmlContent) {
-        alert('No labels to print.');
-        return;
-      }
-      const printWindow = window.open('', '_blank', 'width=800,height=600');
-      if (!printWindow) return;
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Print Labels</title>
-            <style>
-              @media print {
-                @page {
-                  size: 3.5in 1.1in;
-                  margin: 0;
-                }
-                body {
-                  margin: 0;
-                  padding: 0;
-                }
-                .label {
-                  page-break-inside: avoid;
-                  break-inside: avoid;
-                  border: none !important;
-                }
-              }
-            </style>
-          </head>
-          <body>${htmlContent}</body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    }
+    const printable = document.getElementById(`printable-area-${groupKey}`);
+    if (!printable) return;
+    const html = printable.innerHTML;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`
+      <html><head><title>Print</title>
+        <style>@media print {@page{size:3.5in 1.1in;margin:0}}body{margin:0;padding:0}</style>
+      </head><body>${html}</body></html>`);
+    w.document.close(); w.focus();
+    setTimeout(() => { w.print(); w.close(); }, 500);
   };
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
       <h1 className="text-2xl font-bold">Edit Bags (Scan QR Codes)</h1>
-      <div className="flex flex-wrap gap-4">
-        <button
-          onClick={() => setShowScanner(prev => !prev)}
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          {showScanner ? 'Hide Scanner' : 'Show Scanner'}
-        </button>
-      </div>
+      <button
+        onClick={() => setShowScanner(s => !s)}
+        className="bg-blue-500 text-white px-4 py-2 rounded"
+      >
+        {showScanner ? 'Hide Scanner' : 'Show Scanner'}
+      </button>
+
       {showScanner && (
         <div className="mb-4">
           <Scanner
             onScan={handleScan}
-            onError={(err) => console.error('Scanner error:', err)}
+            onError={console.error}
             formats={['qr_code']}
             paused={!showScanner}
-            allowMultiple={true}
+            allowMultiple
           />
         </div>
       )}
-      {groups.length > 0 ? (
-        <div className="space-y-4">
-          {groups.map(group => (
-            <div key={group.key} className="border p-4 rounded">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div>
-                    <span className="font-semibold">Harvest Room:</span>{' '}
-                    {group.harvest_room_id ? getHarvestRoomName(group.harvest_room_id) : 'Unknown'}
-                  </div>
-                  <div>
-                    <span className="font-semibold">Strain:</span>{' '}
-                    {group.strain_id ? getStrainName(group.strain_id) : 'Unknown'}
-                  </div>
-                  <div>
-                    <span className="font-semibold">Bag Size:</span>{' '}
-                    {group.size_category_id ? getBagSizeName(group.size_category_id) : 'Unknown'}
-                  </div>
-                  <div>
-                    <span className="font-semibold">Weight:</span> {group.weight} lbs
-                  </div>
-                  <div>
-                    <span className="font-semibold">Count:</span> {group.bags.length}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingGroupKey(group.key);
-                      setEditFields({
-                        harvest_room_id: group.harvest_room_id || '',
-                        strain_id: group.strain_id || '',
-                        size_category_id: group.size_category_id || '',
-                        weight: group.weight,
-                      });
-                    }}
-                    className="bg-blue-500 text-white px-3 py-1 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => printLabelsForGroup(group.key)}
-                    className="bg-blue-600 text-white px-3 py-1 rounded"
-                  >
-                    Print New Labels
-                  </button>
-                </div>
+
+      {groups.length === 0 && <p>No bags scanned yet.</p>}
+
+      {groups.map(group => (
+        <div key={group.key} className="border p-4 rounded space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <p><strong>Harvest Room:</strong> {group.harvest_room_id ? getHarvestRoomName(group.harvest_room_id) : 'Unknown'}</p>
+              <p><strong>Strain:</strong>        {group.strain_id        ? getStrainName(group.strain_id)        : 'Unknown'}</p>
+              <p><strong>Bag Size:</strong>      {group.size_category_id ? getBagSizeName(group.size_category_id) : 'Unknown'}</p>
+              <p><strong>Weight:</strong>        {group.weight} lbs</p>
+              <p><strong>Count:</strong>         {group.bags.length}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setEditingGroupKey(group.key);
+                  setEditFields({
+                    harvest_room_id: group.harvest_room_id || '',
+                    strain_id: group.strain_id || '',
+                    size_category_id: group.size_category_id || '',
+                    weight: group.weight,
+                  });
+                }}
+                className="bg-blue-500 text-white px-3 py-1 rounded"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => printLabelsForGroup(group.key)}
+                className="bg-green-500 text-white px-3 py-1 rounded"
+              >
+                Print Labels
+              </button>
+            </div>
+          </div>
+
+          {editingGroupKey === group.key && (
+            <div className="space-y-4">
+              {/* Harvest Room */}
+              <div>
+                <label className="block font-semibold">Harvest Room</label>
+                <select
+                  value={editFields.harvest_room_id || ''}
+                  onChange={e => setEditFields(f => ({ ...f, harvest_room_id: e.target.value }))}
+                  className="border p-2 rounded w-full"
+                >
+                  <option value="">— select —</option>
+                  {initialHarvestRooms.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
               </div>
-              {editingGroupKey === group.key && (
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <label className="block mb-1 font-semibold">Update Harvest Room:</label>
-                    <select
-                      value={editFields.harvest_room_id || ''}
-                      onChange={(e) =>
-                        setEditFields(prev => ({ ...prev, harvest_room_id: e.target.value }))
-                      }
-                      className="border p-2 rounded w-full"
-                    >
-                      <option value="">Select Harvest Room</option>
-                      {[...initialHarvestRooms]
-                        .sort((a, b) => {
-                          const numA = parseInt(a.name.replace(/[^\d]/g, ''), 10) || 0;
-                          const numB = parseInt(b.name.replace(/[^\d]/g, ''), 10) || 0;
-                          return numB - numA;
-                        })
-                        .map(room => (
-                          <option key={room.id} value={room.id}>
-                            {room.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-semibold">Update Strain:</label>
-                    <select
-                      value={editFields.strain_id || ''}
-                      onChange={(e) =>
-                        setEditFields(prev => ({ ...prev, strain_id: e.target.value }))
-                      }
-                      className="border p-2 rounded w-full"
-                    >
-                      <option value="">Select Strain</option>
-                      {initialStrains.map(strain => (
-                        <option key={strain.id} value={strain.id}>
-                          {strain.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-semibold">Update Bag Size:</label>
-                    <select
-                      value={editFields.size_category_id || ''}
-                      onChange={(e) =>
-                        setEditFields(prev => ({ ...prev, size_category_id: e.target.value }))
-                      }
-                      className="border p-2 rounded w-full"
-                    >
-                      <option value="">Select Bag Size</option>
-                      {initialBagSizes.map(size => (
-                        <option key={size.id} value={size.id}>
-                          {size.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block mb-1 font-semibold">Update Weight (lbs):</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editFields.weight !== undefined ? editFields.weight : ''}
-                      onChange={(e) =>
-                        setEditFields(prev => ({ ...prev, weight: parseFloat(e.target.value) || 0 }))
-                      }
-                      className="border p-2 rounded w-full"
-                    />
-                  </div>
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => updateGroup(group.key, editFields)}
-                      className="bg-blue-500 text-white px-4 py-2 rounded"
-                    >
-                      Save Changes
-                    </button>
-                    <button
-                      onClick={() => setEditingGroupKey(null)}
-                      className="bg-blue-500 text-white px-4 py-2 rounded"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-              {/* Hidden printable container for this group */}
-              <div id={`printable-area-${group.key}`} className="hidden">
-                <LabelsToPrint
-                  bags={group.bags}
-                  serverStrains={initialStrains}
-                  serverBagSizes={initialBagSizes}
-                  serverHarvestRooms={initialHarvestRooms}
+              {/* Strain */}
+              <div>
+                <label className="block font-semibold">Strain</label>
+                <select
+                  value={editFields.strain_id || ''}
+                  onChange={e => setEditFields(f => ({ ...f, strain_id: e.target.value }))}
+                  className="border p-2 rounded w-full"
+                >
+                  <option value="">— select —</option>
+                  {initialStrains.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Bag Size */}
+              <div>
+                <label className="block font-semibold">Bag Size</label>
+                <select
+                  value={editFields.size_category_id || ''}
+                  onChange={e => setEditFields(f => ({ ...f, size_category_id: e.target.value }))}
+                  className="border p-2 rounded w-full"
+                >
+                  <option value="">— select —</option>
+                  {initialBagSizes.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Weight */}
+              <div>
+                <label className="block font-semibold">Weight (lbs)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editFields.weight ?? ''}
+                  onChange={e => setEditFields(f => ({ ...f, weight: parseFloat(e.target.value) || 0 }))}
+                  className="border p-2 rounded w-full"
                 />
               </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => updateGroup(group.key, editFields)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditingGroupKey(null)}
+                  className="bg-gray-400 text-white px-4 py-2 rounded"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* Hidden printable area */}
+          <div id={`printable-area-${group.key}`} className="hidden">
+            <LabelsToPrint
+              bags={group.bags}
+              serverStrains={initialStrains}
+              serverBagSizes={initialBagSizes}
+              serverHarvestRooms={initialHarvestRooms}
+            />
+          </div>
         </div>
-      ) : (
-        <p className="text-sm">No groups scanned yet.</p>
-      )}
+      ))}
     </div>
   );
 };

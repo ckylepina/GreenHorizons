@@ -1,147 +1,91 @@
 // app/api/zoho/updateItem/route.ts
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { refreshZohoAccessToken } from '@/app/lib/zohoAuth'
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
-interface UpdateItemBody {
-  sku: string
-  name?: string
-  cf_harvest?: string
-  cf_size?: string
-  rate?: number
-  purchase_rate?: number
-}
+const HARVEST_FIELD_ID = '6118005000000123236';
+const SIZE_FIELD_ID    = '6118005000000280001';
 
 export async function POST(request: NextRequest) {
-  // 1) Parse + validate incoming JSON
-  let rawBody: unknown
+  // 1) Parse + validate JSON body
+  let raw: unknown;
   try {
-    rawBody = await request.json()
+    raw = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (typeof rawBody !== 'object' || rawBody === null) {
-    return NextResponse.json({ error: 'Expected JSON object' }, { status: 400 })
+  if (typeof raw !== 'object' || raw === null) {
+    return NextResponse.json({ error: 'Expected an object' }, { status: 400 });
   }
-  const body = rawBody as Partial<UpdateItemBody>
-  const { sku, name, cf_harvest, cf_size, rate, purchase_rate } = body
+  const body = raw as Record<string, unknown>;
+  const sku        = typeof body.sku        === 'string' ? body.sku        : '';
+  const name       = typeof body.name       === 'string' ? body.name       : undefined;
+  const cf_harvest = typeof body.cf_harvest === 'string' ? body.cf_harvest : undefined;
+  const cf_size    = typeof body.cf_size    === 'string' ? body.cf_size    : undefined;
+  const Weight     = typeof body.Weight     === 'number' ? body.Weight     : undefined;
 
-  if (!sku || typeof sku !== 'string') {
-    return NextResponse.json({ error: 'Missing or invalid sku' }, { status: 400 })
+  if (!sku) {
+    return NextResponse.json({ error: 'Missing sku' }, { status: 400 });
   }
 
-  // 2) Load orgId + refresh token
-  const orgId = process.env.ZOHO_ORGANIZATION_ID
+  // 2) Load org ID & OAuth token
+  const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
-    return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'Organization ID not set' }, { status: 500 });
   }
-  let token: string
+  let token: string;
   try {
-    token = await refreshZohoAccessToken()
+    token = await refreshZohoAccessToken();
   } catch (err) {
-    console.error('Auth failed:', err)
-    return NextResponse.json({ error: 'Auth failed' }, { status: 500 })
+    console.error('Auth failure:', err);
+    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 3) LOOKUP ITEM_ID BY SKU
-  const lookupUrl = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}&sku=${encodeURIComponent(sku)}`
-  console.log('[Server] LOOKUP → GET', lookupUrl)
-  let lookupRes: Response
+  // 3) Build Zoho payload only including provided fields
+  const payload: Record<string, unknown> = {};
+  if (name)       payload.name          = name;
+  if (Weight != null) payload.Weight   = Weight;
+  const customFields: { customfield_id: string; value: string }[] = [];
+  if (cf_harvest) customFields.push({ customfield_id: HARVEST_FIELD_ID, value: cf_harvest });
+  if (cf_size)    customFields.push({ customfield_id: SIZE_FIELD_ID,    value: cf_size    });
+  if (customFields.length) payload.custom_fields = customFields;
+
+  console.log('🛠️ [Server] updateItem payload:', JSON.stringify(payload, null, 2));
+
+  // 4) PUT to Zoho
+  const url = `https://www.zohoapis.com/inventory/v1/items/${encodeURIComponent(
+    sku
+  )}?organization_id=${orgId}`;
+  let resp: Response;
   try {
-    lookupRes = await fetch(lookupUrl, {
-      headers: { Authorization: `Zoho-oauthtoken ${token}` }
-    })
+    resp = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
   } catch (networkErr) {
-    console.error('Network error during lookup:', networkErr)
-    return NextResponse.json({ error: 'Lookup network error' }, { status: 502 })
+    console.error('Network error calling Zoho:', networkErr);
+    return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  let lookupJson: unknown
+  // 5) Parse Zoho response (or raw text on parse error)
+  let zohoBody: unknown;
   try {
-    lookupJson = await lookupRes.json()
+    zohoBody = await resp.json();
   } catch {
-    console.error('Lookup JSON parse error')
-    return NextResponse.json({ error: 'Lookup parse error' }, { status: 502 })
+    zohoBody = await resp.text();
   }
 
-  // Validate shape: { items: Array<{ item_id: string }> }
-  if (
-    !lookupRes.ok ||
-    typeof lookupJson !== 'object' ||
-    lookupJson === null ||
-    !('items' in lookupJson) ||
-    !Array.isArray((lookupJson as Record<string, unknown>).items) ||
-    ((lookupJson as Record<string, unknown>).items as unknown[]).length === 0
-  ) {
-    console.error('Lookup failed or no items:', lookupRes.status, lookupJson)
-    return NextResponse.json(
-      { error: 'Item not found in Zoho', details: lookupJson },
-      { status: lookupRes.status || 404 }
-    )
-  }
-  const itemsArray = (lookupJson as Record<string, unknown>).items as unknown[]
-  const first = itemsArray[0]
-  if (
-    typeof first !== 'object' ||
-    first === null ||
-    !('item_id' in first) ||
-    typeof (first as Record<string, unknown>).item_id !== 'string'
-  ) {
-    console.error('Unexpected lookup item shape:', first)
-    return NextResponse.json({ error: 'Lookup returned bad data' }, { status: 502 })
-  }
-  const itemId = (first as Record<string, unknown>).item_id as string
-  console.log('[Server] Found item_id=', itemId)
-
-  // 4) Build update payload with only provided fields
-  const updatePayload: Record<string, unknown> = {}
-  if (typeof name === 'string')   updatePayload.name           = name
-  if (typeof rate === 'number')    updatePayload.rate           = rate
-  if (typeof purchase_rate === 'number') updatePayload.purchase_rate = purchase_rate
-
-  const customFields: { customfield_id: string; value: string }[] = []
-  if (typeof cf_harvest === 'string') customFields.push({ customfield_id: '6118005000000123236', value: cf_harvest })
-  if (typeof cf_size === 'string')    customFields.push({ customfield_id: '6118005000000280001', value: cf_size })
-  if (customFields.length > 0)       updatePayload.custom_fields = customFields
-
-  console.log(
-    `[Server] UPDATE → PUT https://www.zohoapis.com/inventory/v1/items/${itemId}?organization_id=${orgId}`
-  )
-  console.log('[Server] updatePayload:', JSON.stringify(updatePayload, null, 2))
-
-  // 5) Send the PUT
-  let updateRes: Response
-  try {
-    updateRes = await fetch(
-      `https://www.zohoapis.com/inventory/v1/items/${itemId}?organization_id=${orgId}`,
-      {
-        method:  'PUT',
-        headers: {
-          Authorization: `Zoho-oauthtoken ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updatePayload)
-      }
-    )
-  } catch (networkErr) {
-    console.error('Network error during update:', networkErr)
-    return NextResponse.json({ error: 'Update network error' }, { status: 502 })
+  // 6) Handle non‑OK status
+  if (!resp.ok) {
+    console.error('Zoho updateItem error:', resp.status, zohoBody);
+    return NextResponse.json(zohoBody, { status: resp.status });
   }
 
-  let updateJson: unknown
-  try {
-    updateJson = await updateRes.json()
-  } catch {
-    const text = await updateRes.text()
-    console.error('Update parse error, raw text:', text)
-    updateJson = { raw: text }
-  }
-
-  if (!updateRes.ok) {
-    console.error('Zoho update failed:', updateRes.status, updateJson)
-    return NextResponse.json(updateJson, { status: updateRes.status })
-  }
-
-  console.log('✅ Zoho update success:', updateJson)
-  return NextResponse.json(updateJson)
+  // 7) Success
+  console.log('✅ Zoho updateItem success:', zohoBody);
+  return NextResponse.json(zohoBody);
 }
