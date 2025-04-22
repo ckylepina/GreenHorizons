@@ -286,7 +286,7 @@ export default function CustomerSection({
                   target: { name: 'phone', value: phone },
                 } as React.ChangeEvent<HTMLInputElement>)
               }
-              inputClass="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              inputClass="mt-1 block text-black w-full border border-gray-300 rounded-md shadow-sm p-2"
               containerClass="w-full"
             />
           </div>
