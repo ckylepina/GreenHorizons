@@ -8,7 +8,7 @@ interface UpdateItemBody {
   name?: string;
   cf_harvest?: string;
   cf_size?: string;
-  Weight?: number;
+  Weight?: number;      // incoming “weight” in lbs
 }
 
 export async function POST(request: NextRequest) {
@@ -30,19 +30,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing or invalid sku' }, { status: 400 });
   }
 
-  // 3) Collect any updatable fields
+  // 3) Pull out any updatable fields
   const updateFields: UpdateItemBody = { sku };
-  if (typeof body.name === 'string') updateFields.name = body.name;
+  if (typeof body.name === 'string')       updateFields.name       = body.name;
   if (typeof body.cf_harvest === 'string') updateFields.cf_harvest = body.cf_harvest;
-  if (typeof body.cf_size === 'string') updateFields.cf_size = body.cf_size;
-  if (typeof body.Weight === 'number') updateFields.Weight = body.Weight;
+  if (typeof body.cf_size === 'string')    updateFields.cf_size    = body.cf_size;
+  if (typeof body.Weight === 'number')     updateFields.Weight     = body.Weight;
 
-  // Must have at least one field beyond sku
+  // must have at least one real field to update
   if (Object.keys(updateFields).length <= 1) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
 
-  // 4) Get Org ID & OAuth token
+  // 4) Org ID & OAuth
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
@@ -51,17 +51,19 @@ export async function POST(request: NextRequest) {
   try {
     token = await refreshZohoAccessToken();
   } catch (err) {
-    console.error('Auth error refreshing Zoho token:', err);
-    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
+    console.error('Auth error:', err);
+    return NextResponse.json({ error: 'Auth failed' }, { status: 500 });
   }
 
-  // 5) Lookup Zoho item_id by SKU
+  // 5) Lookup Zoho’s internal item_id by SKU
   const lookupUrl = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}&sku=${encodeURIComponent(
     sku
   )}`;
   let lookupResp: Response, lookupJson: unknown;
   try {
-    lookupResp = await fetch(lookupUrl, { headers: { Authorization: `Zoho-oauthtoken ${token}` } });
+    lookupResp = await fetch(lookupUrl, {
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
     lookupJson = await lookupResp.json();
   } catch (e) {
     console.error('Network error on lookup:', e);
@@ -73,29 +75,30 @@ export async function POST(request: NextRequest) {
   }
   const lookupObj = lookupJson as { items?: unknown[] };
   if (!Array.isArray(lookupObj.items) || lookupObj.items.length === 0) {
-    console.error('No items found in Zoho lookup', lookupJson);
     return NextResponse.json({ error: 'Item not found in Zoho' }, { status: 404 });
   }
-  const first = lookupObj.items[0] as Record<string, unknown>;
-  const itemId = first.item_id;
+  const firstItem = lookupObj.items[0] as Record<string, unknown>;
+  const itemId = firstItem.item_id;
   if (typeof itemId !== 'string') {
-    console.error('Unexpected item_id in lookup', first);
+    console.error('Unexpected lookup response:', firstItem);
     return NextResponse.json({ error: 'Unexpected Zoho response' }, { status: 500 });
   }
 
-  // 6) Build update payload
+  // 6) Build the update payload
   const payload: Record<string, unknown> = {};
-  if (updateFields.name) payload.name = updateFields.name;
-  if (typeof updateFields.Weight === 'number') payload.Weight = updateFields.Weight;
+  if (updateFields.name)       payload.name = updateFields.name;
+  // any custom fields we need?
   const custom: { customfield_id: string; value: string }[] = [];
-  if (updateFields.cf_harvest) {
-    custom.push({ customfield_id: '6118005000000123236', value: updateFields.cf_harvest });
-  }
-  if (updateFields.cf_size) {
-    custom.push({ customfield_id: '6118005000000280001', value: updateFields.cf_size });
-  }
-  if (custom.length) {
-    payload.custom_fields = custom;
+  if (updateFields.cf_harvest) custom.push({ customfield_id: '6118005000000123236', value: updateFields.cf_harvest });
+  if (updateFields.cf_size)    custom.push({ customfield_id: '6118005000000280001', value: updateFields.cf_size });
+  if (custom.length)           payload.custom_fields = custom;
+
+  // **new**: if they passed Weight, stick it under package_details
+  if (typeof updateFields.Weight === 'number') {
+    payload.package_details = {
+      weight: updateFields.Weight,
+      weight_unit: 'lb',
+    };
   }
 
   // 7) Send PUT to Zoho
@@ -114,16 +117,15 @@ export async function POST(request: NextRequest) {
     });
     updateJson = await updateResp.json();
   } catch (e) {
-    console.error('Network error updating Zoho:', e);
+    console.error('Network error during update:', e);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 8) Handle Zoho’s response
   if (!updateResp.ok) {
     console.error('Zoho update error:', updateJson);
     return NextResponse.json(updateJson as object, { status: updateResp.status });
   }
 
-  // 9) Success
+  // 8) Success
   return NextResponse.json(updateJson as object);
 }
