@@ -157,6 +157,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
       <h2 className="text-xl font-semibold mb-2">Grouped Bags & Pricing</h2>
       <div className="flex flex-wrap gap-4 mb-4">
         <button
+          type="button"
           onClick={() => setShowScanner(prev => !prev)}
           className="bg-blue-500 text-white px-4 py-2 rounded"
         >
