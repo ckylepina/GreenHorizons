@@ -2,6 +2,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth'
 
+
+export async function GET() {
+  return NextResponse.json({ alive: true });
+}
+
 const HARVEST_FIELD_ID = '6118005000000123236'
 const SIZE_FIELD_ID    = '6118005000000280001'
 
