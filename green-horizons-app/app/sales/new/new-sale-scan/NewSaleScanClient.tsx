@@ -76,34 +76,56 @@ export default function NewSaleScanClient({
 
   // Upload signature, return public URL or null
   const handleUploadSignature = async (): Promise<string | null> => {
-    const pad = signaturePadRef.current;
-    if (!pad || pad.isEmpty()) {
-      alert('Please provide your signature.');
+    if (!signaturePadRef.current) {
+      alert("Signature pad not initialized");
       return null;
     }
+    if (signaturePadRef.current.isEmpty()) {
+      alert("Please provide your signature.");
+      return null;
+    }
+  
     setUploadingSignature(true);
     try {
-      // convert to blob
-      const blob: Blob | null = await new Promise(resolve =>
-        pad.getTrimmedCanvas().toBlob(b => resolve(b), 'image/png')
-      );
-      if (!blob) throw new Error('Failed to capture signature.');
+      // 1) grab the trimmed canvas
+      const canvas = signaturePadRef.current.getTrimmedCanvas();
+      console.log("[✂️] Trimmed canvas:", canvas);
+      const dataUrl = canvas.toDataURL("image/png");
+      console.log("[📷] dataUrl length:", dataUrl.length);
+  
+      // 2) fetch it to a Blob
+      const fetchResponse = await fetch(dataUrl);
+      if (!fetchResponse.ok) throw new Error("Failed to fetch dataUrl");
+      const blob = await fetchResponse.blob();
+      console.log("[🗳️] Blob size:", blob.size, "type:", blob.type);
+  
+      // 3) choose a file name & upload
       const fileName = `signature-${Date.now()}.png`;
-      // upload
-      const { error: uploadError } = await supabase
+      console.log("[📤] Uploading to bucket 'signatures' as", fileName);
+      const { data: uploadData, error: uploadError } = await supabase
         .storage
-        .from('signatures')
-        .upload(fileName, blob, { upsert: true });
+        .from("signatures")
+        .upload(fileName, blob);
+  
+      console.log("[✔️] uploadData:", uploadData, "uploadError:", uploadError);
       if (uploadError) throw uploadError;
-      // get public URL
-      const { data: urlData } = supabase
+  
+      // 4) get the public URL
+      // getPublicUrl is synchronous and returns { data: { publicUrl } }
+      const { data: publicUrlData } = supabase
         .storage
-        .from('signatures')
+        .from("signatures")
         .getPublicUrl(fileName);
-      return urlData.publicUrl;
+  
+      console.log("[🌐] publicUrlData:", publicUrlData);
+      if (!publicUrlData.publicUrl) {
+        throw new Error("Failed to retrieve public URL");
+      }
+  
+      return publicUrlData.publicUrl;
     } catch (err) {
-      console.error('❌ Signature upload error:', err);
-      alert('Failed to upload signature.');
+      console.error("Signature upload error:", err);
+      alert((err as Error).message);
       return null;
     } finally {
       setUploadingSignature(false);
