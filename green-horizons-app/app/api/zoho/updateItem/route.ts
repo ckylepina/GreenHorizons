@@ -2,43 +2,59 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
 
+const HARVEST_FIELD_ID = '6118005000000123236';
+const SIZE_FIELD_ID    = '6118005000000280001';
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null;
+}
+
 export async function POST(request: NextRequest) {
-  // 1) Parse & validate JSON
+  // 1) parse JSON
   let raw: unknown;
   try {
     raw = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (typeof raw !== 'object' || raw === null) {
-    return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 });
-  }
-  const body = raw as Record<string, unknown>;
-
-  // 2) Required: sku
-  const sku = typeof body.sku === 'string' ? body.sku : null;
-  if (!sku) {
-    return NextResponse.json({ error: 'Missing or invalid "sku"' }, { status: 400 });
+  if (!isRecord(raw)) {
+    return NextResponse.json({ error: 'Expected an object' }, { status: 400 });
   }
 
-  // 3) Optional fields
-  const name       = typeof body.name       === 'string' ? body.name       : undefined;
-  const cf_harvest = typeof body.cf_harvest === 'string' ? body.cf_harvest : undefined;
-  const cf_size    = typeof body.cf_size    === 'string' ? body.cf_size    : undefined;
-  const Weight     = typeof body.Weight     === 'number' ? body.Weight    : undefined;
+  const body = raw;
 
-  // 4) Build Zoho payload
+  // 2) extract & validate SKU
+  const skuVal = body['sku'];
+  if (typeof skuVal !== 'string' || !skuVal.trim()) {
+    return NextResponse.json({ error: 'Missing or invalid sku' }, { status: 400 });
+  }
+  const sku = skuVal;
+
+  // 3) pull optional fields
+  const name       = typeof body['name'] === 'string' ? body['name'] : undefined;
+  const cfHarvest  = typeof body['cf_harvest'] === 'string' ? body['cf_harvest'] : undefined;
+  const cfSize     = typeof body['cf_size']    === 'string' ? body['cf_size']    : undefined;
+  const weightNum  = typeof body['Weight']     === 'number' ? body['Weight']    : undefined;
+
+  // 4) build Zoho payload
   const payload: Record<string, unknown> = {};
-  if (name)       payload.name        = name;
-  const customFields: { customfield_id: string; value: string | number }[] = [];
-  if (cf_harvest) customFields.push({ customfield_id: '6118005000000123236', value: cf_harvest });
-  if (cf_size)    customFields.push({ customfield_id: '6118005000000280001', value: cf_size });
-  if (customFields.length) payload.custom_fields = customFields;
-  if (Weight !== undefined) {
-    payload.package_details = { weight: Weight };
+  if (name)         payload.name = name;
+  if (cfHarvest) {
+    payload.custom_fields = [
+      { customfield_id: HARVEST_FIELD_ID, value: cfHarvest }
+    ];
+  }
+  if (cfSize) {
+    payload.custom_fields = [
+      ...(Array.isArray(payload.custom_fields) ? payload.custom_fields : []),
+      { customfield_id: SIZE_FIELD_ID, value: cfSize }
+    ];
+  }
+  if (weightNum !== undefined) {
+    payload.package_details = { weight: weightNum, weight_unit: 'lb' };
   }
 
-  // 5) Org ID + OAuth
+  // 5) auth & endpoint
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID not configured' }, { status: 500 });
@@ -46,39 +62,46 @@ export async function POST(request: NextRequest) {
   let token: string;
   try {
     token = await refreshZohoAccessToken();
-  } catch (err: unknown) {
-    console.error('Auth error refreshing Zoho token:', err);
+  } catch (err) {
+    console.error('Auth failed:', err);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
+  const url = `https://www.zohoapis.com/inventory/v1/items/${encodeURIComponent(sku)}?organization_id=${orgId}`;
 
-  // 6) Send PUT to Zoho
-  const url = `https://www.zohoapis.com/inventory/v1/items/${encodeURIComponent(
-    sku
-  )}?organization_id=${orgId}`;
+  // 6) send to Zoho
   console.log('🛠️ [Server] updateItem payload →', JSON.stringify(payload, null, 2));
-
   let resp: Response;
-  let zohoBody: unknown;
   try {
     resp = await fetch(url, {
       method: 'PUT',
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
-    zohoBody = await resp.json();
-  } catch (err: unknown) {
-    console.error('Network error calling Zoho updateItem:', err);
+  } catch (networkErr) {
+    console.error('Network error:', networkErr);
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
+  // 7) parse Zoho’s response
+  let zohoBody: unknown;
+  try {
+    zohoBody = await resp.json();
+  } catch (parseErr) {
+    const rawText = await resp.text();
+    console.error('Failed to parse Zoho JSON:', parseErr);
+    zohoBody = { raw: rawText };
+  }
+
+  // 8) handle error status
   if (!resp.ok) {
-    console.error('Zoho updateItem returned error:', resp.status, zohoBody);
+    console.error('Zoho returned error:', resp.status, zohoBody);
     return NextResponse.json(zohoBody, { status: resp.status });
   }
 
-  // 7) Success
+  // 9) success
+  console.log('✅ Zoho updateItem response:', zohoBody);
   return NextResponse.json(zohoBody);
 }
