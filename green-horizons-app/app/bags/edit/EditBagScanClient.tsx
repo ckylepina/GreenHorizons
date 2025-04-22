@@ -245,7 +245,9 @@ export default function EditBagScanClient({
                 title="Edit this group"
                 aria-label="Edit this group"
               >
-                <FaEdit size={18} />
+                <div className='bg-blue-500 text-white px-3 py-2 rounded'>
+                  <FaEdit size={22} />
+                </div>
               </button>
 
               {/* Print icon */}
@@ -255,7 +257,9 @@ export default function EditBagScanClient({
                 title="Print labels for this group"
                 aria-label="Print labels for this group"
               >
-                <FaPrint size={18} />
+                <div className='bg-blue-500 text-white px-3 py-2 rounded'>
+                  <FaPrint size={22}/>
+                </div>
               </button>
             </div>
           </div>
