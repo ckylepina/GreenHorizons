@@ -87,11 +87,13 @@ export default function NewSaleScanClient({
     }
     setUploadingSignature(true);
     try {
-      // 1) export to Data URL & convert to Blob
-      const dataUrl = signaturePadRef.current.getTrimmedCanvas().toDataURL('image/png');
-      const blob = await (await fetch(dataUrl)).blob();
+      // 1) convert trimmed canvas to a Blob
+      const canvas = signaturePadRef.current.getTrimmedCanvas();
+      const blob: Blob = await new Promise(resolve => {
+        canvas.toBlob(b => resolve(b!), 'image/png');
+      });
 
-      // 2) upload Blob
+      // 2) upload to your 'signatures' bucket
       const fileName = `signature-${Date.now()}.png`;
       const { error: uploadError } = await supabase
         .storage
@@ -99,7 +101,7 @@ export default function NewSaleScanClient({
         .upload(fileName, blob, { upsert: true });
       if (uploadError) throw uploadError;
 
-      // 3) get public URL
+      // 3) grab the public URL
       const { data: urlData } = supabase
         .storage
         .from('signatures')
