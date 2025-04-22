@@ -52,7 +52,7 @@ export default function NewSaleScanClient({
   const router = useRouter();
   const { theme, resolvedTheme } = useTheme();
   const currentTheme = theme === 'system' ? resolvedTheme : theme;
-  
+
   // --- Customer State ---
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [searchTerm, setSearchTerm] = useState('');
@@ -76,10 +76,11 @@ export default function NewSaleScanClient({
   const [uploadingSignature, setUploadingSignature] = useState<boolean>(false);
 
   const handleNewCustomerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewCustomer({ ...newCustomer, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setNewCustomer((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Function to upload the digital signature from the canvas.
+  // Upload the digital signature from the canvas.
   const handleUploadSignature = async (): Promise<string | null> => {
     if (!signaturePadRef.current || signaturePadRef.current.isEmpty()) {
       alert("Please provide your signature.");
@@ -90,13 +91,19 @@ export default function NewSaleScanClient({
       const dataUrl = signaturePadRef.current.getTrimmedCanvas().toDataURL('image/png');
       const blob = await (await fetch(dataUrl)).blob();
       const fileName = `signature-${Date.now()}.png`;
-      const filePath = fileName;
-      const { error } = await supabase.storage.from('signatures').upload(filePath, blob);
-      if (error) throw error;
-      const { data: publicUrlData } = await supabase.storage.from('signatures').getPublicUrl(filePath);
+      const { error: uploadError } = await supabase.storage
+        .from('signatures')
+        .upload(fileName, blob);
+      if (uploadError) throw uploadError;
+      const { data: publicUrlData } = await supabase.storage
+        .from('signatures')
+        .getPublicUrl(fileName);
       return publicUrlData.publicUrl;
-    } catch (error) {
-      alert((error as Error).message);
+    } catch (error: unknown) {
+      console.error('❌ Signature upload error:', error);
+      const message =
+        error instanceof Error ? error.message : JSON.stringify(error);
+      alert(`Signature upload failed: ${message}`);
       return null;
     } finally {
       setUploadingSignature(false);
@@ -109,164 +116,147 @@ export default function NewSaleScanClient({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🔔 handleSubmit start');
 
-    // Validate customer info.
-    if (mode === 'existing') {
-      if (!selectedCustomer) {
-        alert('Please select an existing customer.');
-        return;
-      }
-    } else {
-      if (!newCustomer.first_name || !newCustomer.last_name || !newCustomer.email) {
-        alert('Please fill in required customer details for a new customer.');
-        return;
-      }
-      if (!newCustomer.drivers_license) {
-        alert('Please upload your driver’s license photo.');
-        return;
-      }
-    }
-    if (scannedBags.length === 0) {
-      alert('Please scan at least one bag.');
-      return;
-    }
-    if (saleTotal <= 0) {
-      alert('Please set a price per bag for all groups.');
-      return;
-    }
+    try {
+      // --- Signature ---
+      console.log('— uploading signature…');
+      const signatureUrl = await handleUploadSignature();
+      if (!signatureUrl) throw new Error('Signature upload cancelled');
+      console.log('— got signature URL:', signatureUrl);
 
-    // --- Step: Upload Signature ---
-    const signaturePublicUrl = await handleUploadSignature();
-    if (!signaturePublicUrl) return;
-
-    // --- Step 1: Create or Retrieve Customer ---
-    let customerId: string | null = null;
-    if (mode === 'existing') {
-      customerId = selectedCustomer?.id || null;
-    } else {
-      const params: CreateCustomerParams = {
-        p_first_name: newCustomer.first_name,
-        p_last_name: newCustomer.last_name,
-        p_business_name: newCustomer.business_name,
-        p_license_number: newCustomer.license_number,
-        p_email: newCustomer.email,
-        p_phone: newCustomer.phone,
-        p_tenant_id: tenantId,
-        p_drivers_license: newCustomer.drivers_license,
-      };
-      console.log("Creating customer with params:", params);
-      const { data, error } = await supabase.rpc<
-        "create_customer",
-        Database["public"]["Functions"]["create_customer"]
-      >(
-        "create_customer",
-        params as Database["public"]["Functions"]["create_customer"]["Args"]
-      );
-      console.log("RPC create_customer response:", { data, error });
-      if (error) {
-        console.error('Error creating customer:', error);
-        alert('There was an error creating the customer.');
-        return;
-      }
-      if (data && Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && 'id' in data[0]) {
-        customerId = (data[0] as { id: string }).id;
+      // --- Customer create/retrieve ---
+      let customerId: string | null = null;
+      if (mode === 'existing') {
+        if (!selectedCustomer) {
+          throw new Error('No existing customer selected');
+        }
+        customerId = selectedCustomer.id;
+        console.log('— using existing customer ID:', customerId);
       } else {
-        customerId = null;
+        console.log('— creating new customer with:', newCustomer);
+        const params: CreateCustomerParams = {
+          p_first_name: newCustomer.first_name,
+          p_last_name: newCustomer.last_name,
+          p_business_name: newCustomer.business_name,
+          p_license_number: newCustomer.license_number,
+          p_email: newCustomer.email,
+          p_phone: newCustomer.phone,
+          p_tenant_id: tenantId,
+          p_drivers_license: newCustomer.drivers_license,
+        };
+
+        const {
+          data: rpcData,
+          error: rpcError,
+        } = await supabase.rpc<
+          'create_customer',
+          Database['public']['Functions']['create_customer']
+        >('create_customer', params as Database['public']['Functions']['create_customer']['Args']);
+
+        if (rpcError) throw rpcError;
+        if (!Array.isArray(rpcData) || rpcData.length === 0 || typeof rpcData[0] !== 'object' || !('id' in rpcData[0])) {
+          throw new Error('Unexpected RPC create_customer result');
+        }
+        customerId = (rpcData[0] as { id: string }).id;
+        console.log('— new customer ID:', customerId);
       }
-    }
-    if (!customerId) {
-      alert('Customer ID is missing.');
-      return;
-    }
 
-    // --- Step 2: Insert Sale Record (including signature) ---
-    const saleDate = new Date().toISOString();
-    const { data: saleData, error: saleError } = await supabase
-      .from('sales')
-      .insert([{
-        customer_id: customerId,
-        sale_date: saleDate,
-        status: 'completed',
+      // --- Insert sale record ---
+      console.log('— inserting sale record…');
+      const saleDate = new Date().toISOString();
+      const {
+        data: saleRows,
+        error: saleError,
+      } = await supabase
+        .from('sales')
+        .insert([{
+          customer_id: customerId!,
+          sale_date: saleDate,
+          status: 'completed',
+          tenant_id: tenantId,
+          total_amount: saleTotal,
+          cash_transaction_id: null,
+          signature_url: signatureUrl,
+        }])
+        .select();
+
+      if (saleError) throw saleError;
+      if (!saleRows || saleRows.length === 0) throw new Error('Sale insert returned no rows');
+      const saleRecord = saleRows[0];
+      console.log('— sale record:', saleRecord);
+
+      // --- Insert sale items ---
+      console.log('— inserting sale items…');
+      const pricePerBag = saleTotal / scannedBags.length;
+      const saleItems = scannedBags.map((bag) => ({
+        sale_id: saleRecord.id,
+        bag_id: bag.id,
+        price: pricePerBag,
+      }));
+      const { error: itemsError } = await supabase
+        .from('sale_items')
+        .insert(saleItems);
+      if (itemsError) throw itemsError;
+      console.log('— sale items inserted');
+
+      // --- Insert cash transaction ---
+      console.log('— inserting cash transaction…');
+      const cashTxn = {
         tenant_id: tenantId,
-        total_amount: saleTotal,
-        cash_transaction_id: null,
-        signature_url: signaturePublicUrl,
-      }])
-      .select();
-    if (saleError) {
-      console.error('Error inserting sale:', saleError);
-      alert('Error recording sale.');
-      return;
-    }
-    const saleRecord = saleData[0];
+        transaction_type: 'sale' as const,
+        amount: saleTotal,
+        description: 'Sale transaction',
+        transaction_date: saleDate,
+        created_by: currentEmployeeId,
+        updated_by: currentEmployeeId,
+      };
+      const {
+        data: cashRows,
+        error: cashError,
+      } = await supabase
+        .from('cash_transactions')
+        .insert([cashTxn])
+        .select();
+      if (cashError) throw cashError;
+      if (!cashRows || cashRows.length === 0) throw new Error('Cash transaction insert returned no rows');
+      const cashRecord = cashRows[0];
+      console.log('— cash transaction record:', cashRecord);
 
-    // --- Step 3: Insert Sale Items ---
-    const pricePerBag = saleTotal / scannedBags.length;
-    const saleItems = scannedBags.map((bag) => ({
-      sale_id: saleRecord.id,
-      bag_id: bag.id,
-      price: pricePerBag,
-    }));
-    const { error: saleItemsError } = await supabase
-      .from('sale_items')
-      .insert(saleItems);
-    if (saleItemsError) {
-      console.error('Error inserting sale items:', saleItemsError);
-      alert('Error recording sale items.');
-      return;
-    }
+      // --- Link sale → cash transaction ---
+      console.log('— linking sale to cash transaction…');
+      const { error: linkError } = await supabase
+        .from('sales')
+        .update({ cash_transaction_id: cashRecord.id })
+        .eq('id', saleRecord.id);
+      if (linkError) throw linkError;
+      console.log('— sale record updated with cash_transaction_id');
 
-    // --- Step 4: Insert Cash Transaction ---
-    const cashTransaction = {
-      tenant_id: tenantId,
-      transaction_type: "sale" as const,
-      amount: saleTotal,
-      description: 'Sale transaction',
-      transaction_date: saleDate,
-      created_by: currentEmployeeId,
-      updated_by: currentEmployeeId,
-    };
-    const { data: cashData, error: cashError } = await supabase
-      .from('cash_transactions')
-      .insert([cashTransaction])
-      .select();
-    if (cashError) {
-      console.error('Error inserting cash transaction:', cashError);
-      alert('Error recording cash transaction.');
-      return;
-    }
-    const cashRecord = cashData[0];
+      // --- Update bag statuses to “sold” ---
+      console.log('— marking bags as sold…');
+      const bagIds = scannedBags.map((b) => b.id);
+      const { error: bagError } = await supabase
+        .from('bags')
+        .update({ current_status: 'sold' })
+        .in('id', bagIds);
+      if (bagError) throw bagError;
+      console.log('— bag statuses updated');
 
-    // --- Step 5: Update Sale Record with Cash Transaction ID ---
-    const { error: updateSaleError } = await supabase
-      .from('sales')
-      .update({ cash_transaction_id: cashRecord.id })
-      .eq('id', saleRecord.id);
-    if (updateSaleError) {
-      console.error('Error updating sale record:', updateSaleError);
-      alert('Error updating sale record.');
-      return;
+      // --- Done! redirect to invoice page ---
+      console.log('🎉 All steps complete — redirecting…');
+      router.push(`/invoice/${saleRecord.id}`);
+    } catch (error: unknown) {
+      console.error('❌ handleSubmit error:', error);
+      const message =
+        error instanceof Error ? error.message : JSON.stringify(error);
+      alert(`Error during sale submission: ${message}`);
     }
-
-    // --- Step 6: Update Bags Status to "sold" ---
-    const bagIds = scannedBags.map(bag => bag.id);
-    const { error: updateBagsError } = await supabase
-      .from('bags')
-      .update({ current_status: 'sold' })
-      .in('id', bagIds);
-    if (updateBagsError) {
-      console.error('Error updating bag status:', updateBagsError);
-      alert('Error updating bag status.');
-      return;
-    }
-
-    // --- Step 7: Redirect to Invoice Page ---
-    router.push(`/invoice/${saleRecord.id}`);
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-8">
+    <form onSubmit={handleSubmit} className="container mx-auto px-4 py-8 space-y-8">
       <h1 className="text-2xl font-bold">Make a Sale (Scan Bags)</h1>
+
       <CustomerSection
         mode={mode}
         setMode={setMode}
@@ -277,6 +267,7 @@ export default function NewSaleScanClient({
         newCustomer={newCustomer}
         handleNewCustomerChange={handleNewCustomerChange}
       />
+
       <BagScannerSection
         initialStrains={initialStrains}
         initialBagSizes={initialBagSizes}
@@ -284,6 +275,7 @@ export default function NewSaleScanClient({
         onBagsChange={setScannedBags}
         onTotalChange={setSaleTotal}
       />
+
       {/* Digital Signature Section */}
       <div className="border p-4 rounded shadow">
         <h2 className="text-lg font-semibold mb-2">Digital Signature (Required)</h2>
@@ -292,19 +284,22 @@ export default function NewSaleScanClient({
           penColor={currentTheme === 'dark' ? 'white' : 'black'}
           canvasProps={{ className: "w-full h-40 border rounded bg-transparent" }}
         />
-        <div className="mt-2 flex space-x-2">
-          <button onClick={handleClearSignature} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
-            Clear Signature
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleClearSignature}
+          className="mt-2 bg-red-500 text-white px-3 py-1 rounded text-sm"
+        >
+          Clear Signature
+        </button>
       </div>
+
       <button
         type="submit"
-        onClick={handleSubmit}
+        disabled={uploadingSignature}
         className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
       >
         {uploadingSignature ? 'Uploading Signature...' : 'Submit Sale'}
       </button>
-    </div>
+    </form>
   );
 }
