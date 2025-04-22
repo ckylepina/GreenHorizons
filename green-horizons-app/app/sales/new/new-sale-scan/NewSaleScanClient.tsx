@@ -8,11 +8,19 @@ import { supabase } from '@/utils/supabase/supabaseclient';
 import type { Database } from '@/database.types';
 import CustomerSection from './CustomerSection';
 import BagScannerSection from './BagScannerSection';
-import type { BagRecord, Customer, Strain, BagSize, HarvestRoom } from '@/components/bag-entry-form/types';
+import type {
+  BagRecord,
+  Customer,
+  Strain,
+  BagSize,
+  HarvestRoom,
+} from '@/components/bag-entry-form/types';
 
 // RPC return & arg types
-type CreateCustomerArgs   = Database['public']['Functions']['create_customer']['Args'];
-type CreateCustomerReturn = Database['public']['Functions']['create_customer']['Returns'][0];
+type CreateCustomerArgs =
+  Database['public']['Functions']['create_customer']['Args'];
+type CreateCustomerReturn =
+  Database['public']['Functions']['create_customer']['Returns'][0];
 
 interface NewSaleScanClientProps {
   initialStrains: Strain[];
@@ -34,22 +42,23 @@ export default function NewSaleScanClient({
   const penColor = theme === 'dark' ? '#fff' : '#000';
 
   // CUSTOMER STATE
-  const [mode, setMode]                         = useState<'existing'|'new'>('existing');
-  const [searchTerm, setSearchTerm]             = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer|null>(null);
-  const [newCustomer, setNewCustomer]           = useState({
-    first_name:      '',
-    last_name:       '',
-    business_name:   '',
-    license_number:  '',
-    email:           '',
-    phone:           '',
+  const [mode, setMode] = useState<'existing' | 'new'>('existing');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCustomer, setSelectedCustomer] =
+    useState<Customer | null>(null);
+  const [newCustomer, setNewCustomer] = useState({
+    first_name: '',
+    last_name: '',
+    business_name: '',
+    license_number: '',
+    email: '',
+    phone: '',
     drivers_license: '',
   });
 
   // BAG & TOTAL STATE
   const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
-  const [saleTotal, setSaleTotal]     = useState(0);
+  const [saleTotal, setSaleTotal] = useState(0);
 
   // SIGNATURE STATE
   const signaturePadRef = useRef<SignatureCanvas>(null);
@@ -59,7 +68,7 @@ export default function NewSaleScanClient({
     setNewCustomer((c) => ({ ...c, [e.target.name]: e.target.value }));
 
   // Upload signature PNG → Supabase storage
-  async function uploadSignature(): Promise<string|null> {
+  async function uploadSignature(): Promise<string | null> {
     const pad = signaturePadRef.current;
     if (!pad || pad.isEmpty()) {
       alert('Please sign before submitting.');
@@ -67,18 +76,17 @@ export default function NewSaleScanClient({
     }
     setUploadingSignature(true);
     try {
-      const dataUrl  = pad.getTrimmedCanvas().toDataURL('image/png');
-      const blob     = await (await fetch(dataUrl)).blob();
+      // use the wrapper's toDataURL() instead of getTrimmedCanvas()
+      const dataUrl = pad.toDataURL('image/png');
+      const blob = await (await fetch(dataUrl)).blob();
       const fileName = `signature-${Date.now()}.png`;
 
-      const { error: uploadError } = await supabase
-        .storage
+      const { error: uploadError } = await supabase.storage
         .from('signatures')
         .upload(fileName, blob);
       if (uploadError) throw uploadError;
 
-      const { data } = supabase
-        .storage
+      const { data } = supabase.storage
         .from('signatures')
         .getPublicUrl(fileName);
 
@@ -127,25 +135,26 @@ export default function NewSaleScanClient({
     } else {
       // call create_customer RPC
       const rpcArgs: CreateCustomerArgs = {
-        p_first_name:      newCustomer.first_name,
-        p_last_name:       newCustomer.last_name,
-        p_business_name:   newCustomer.business_name,
-        p_license_number:  newCustomer.license_number,
-        p_email:           newCustomer.email,
-        p_phone:           newCustomer.phone,
+        p_first_name: newCustomer.first_name,
+        p_last_name: newCustomer.last_name,
+        p_business_name: newCustomer.business_name,
+        p_license_number: newCustomer.license_number,
+        p_email: newCustomer.email,
+        p_phone: newCustomer.phone,
         p_drivers_license: newCustomer.drivers_license,
-        p_tenant_id:       tenantId,
+        p_tenant_id: tenantId,
       };
 
-      const { data, error: rpcError } = await supabase
-        .rpc('create_customer', rpcArgs);
+      const { data, error: rpcError } = await supabase.rpc(
+        'create_customer',
+        rpcArgs
+      );
 
       if (rpcError) {
         console.error('create_customer RPC error:', rpcError);
         alert('Failed to create customer.');
         return;
       }
-      // guard + cast
       if (!data || !Array.isArray(data) || data.length === 0) {
         alert('Unexpected response from server.');
         return;
@@ -158,15 +167,17 @@ export default function NewSaleScanClient({
     const saleDate = new Date().toISOString();
     const { data: saleRows, error: saleError } = await supabase
       .from('sales')
-      .insert([{
-        customer_id:        customerId,
-        sale_date:          saleDate,
-        status:             'completed',
-        tenant_id:          tenantId,
-        total_amount:       saleTotal,
-        signature_url:      signatureUrl,
-        cash_transaction_id: null,
-      }])
+      .insert([
+        {
+          customer_id: customerId,
+          sale_date: saleDate,
+          status: 'completed',
+          tenant_id: tenantId,
+          total_amount: saleTotal,
+          signature_url: signatureUrl,
+          cash_transaction_id: null,
+        },
+      ])
       .select();
 
     if (saleError || !saleRows || saleRows.length === 0) {
@@ -178,10 +189,10 @@ export default function NewSaleScanClient({
 
     // 5) Insert sale_items
     const pricePerBag = saleTotal / scannedBags.length;
-    const saleItems = scannedBags.map(b => ({
+    const saleItems = scannedBags.map((b) => ({
       sale_id: saleRecord.id,
-      bag_id:  b.id,
-      price:   pricePerBag,
+      bag_id: b.id,
+      price: pricePerBag,
     }));
     const { error: itemsError } = await supabase
       .from('sale_items')
@@ -194,13 +205,13 @@ export default function NewSaleScanClient({
 
     // 6) Cash transaction
     const cashTx = {
-      tenant_id:        tenantId,
+      tenant_id: tenantId,
       transaction_type: 'sale' as const,
-      amount:           saleTotal,
-      description:      'Sale transaction',
+      amount: saleTotal,
+      description: 'Sale transaction',
       transaction_date: saleDate,
-      created_by:       currentEmployeeId,
-      updated_by:       currentEmployeeId,
+      created_by: currentEmployeeId,
+      updated_by: currentEmployeeId,
     };
     const { data: cashRows, error: cashError } = await supabase
       .from('cash_transactions')
@@ -225,7 +236,7 @@ export default function NewSaleScanClient({
     }
 
     // 8) Mark bags sold
-    const bagIds = scannedBags.map(b => b.id);
+    const bagIds = scannedBags.map((b) => b.id);
     const { error: bagError } = await supabase
       .from('bags')
       .update({ current_status: 'sold' })
@@ -268,7 +279,11 @@ export default function NewSaleScanClient({
         <SignatureCanvas
           ref={signaturePadRef}
           penColor={penColor}
-          canvasProps={{ className: 'w-full h-48 border' }}
+          canvasProps={{
+            width: 600,
+            height: 200,
+            className: 'w-full border',
+          }}
         />
         <button
           type="button"
