@@ -19,6 +19,8 @@ interface CreateItemBody {
   purchase_rate:   number;
   unit?:           string;
   track_inventory?:boolean;
+  initial_stock?:   number;
+  initial_stock_rate?: number;
   package_details?: PackageDetails;
   custom_fields?:   CustomField[];
 }
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     purchase_rate,
     unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
     track_inventory: typeof body.track_inventory === 'boolean' ? body.track_inventory : true,
+    initial_stock:      1,
   };
 
   // 3a) optional package_details
