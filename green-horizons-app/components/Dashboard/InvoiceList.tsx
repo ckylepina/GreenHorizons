@@ -2,14 +2,14 @@
 import React from 'react';
 import Link from 'next/link';
 
-interface Invoice {
+export interface Invoice {
   id: string;
   sale_date: string;
   total_amount: number;
   customer_name: string;
 }
 
-interface InvoiceListProps {
+export interface InvoiceListProps {
   recentInvoices: Invoice[];
   allInvoices: Invoice[];
 }

@@ -18,47 +18,55 @@ interface GroupedData {
   total: number;
 }
 
-const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSizes }) => {
+const Menu: React.FC<MenuProps> = ({
+  inventoryBags,
+  serverStrains,
+  serverBagSizes,
+}) => {
   // Define allowed sizes and their order.
   const allowedSizesOrder = ['Bigs', 'Smalls', 'Micros'];
   const allowedSizes = new Set(allowedSizesOrder);
 
-  // Filter inventoryBags to only include those with an allowed size.
+  // Filter inventoryBags to only include those currently in inventory AND with an allowed size.
   const filteredBags = inventoryBags.filter((bag) => {
+    // 1) Must be in_inventory
+    if (bag.current_status !== 'in_inventory') return false;
+
+    // 2) Must have an allowed size
     const size = serverBagSizes.find((s) => s.id === bag.size_category_id);
-    return size && allowedSizes.has(size.name);
+    return size !== undefined && allowedSizes.has(size.name);
   });
 
-  // Group filtered inventory by strain name (ignoring differences in harvest, etc.).
+  // Group filtered inventory by strain name.
   const grouped: Record<string, GroupedData> = {};
   filteredBags.forEach((bag) => {
     const strain = serverStrains.find((s) => s.id === bag.strain_id);
     const strainName = strain ? strain.name : 'Unknown';
-    const groupKey = strainName.toLowerCase();
+    const key = strainName.toLowerCase();
+
     const size = serverBagSizes.find((s) => s.id === bag.size_category_id);
     const sizeName = size ? size.name : 'Unknown';
-    if (!grouped[groupKey]) {
-      grouped[groupKey] = {
-        strainName,
-        countsBySize: {},
-        total: 0,
-      };
+
+    if (!grouped[key]) {
+      grouped[key] = { strainName, countsBySize: {}, total: 0 };
     }
-    grouped[groupKey].total += 1;
-    grouped[groupKey].countsBySize[sizeName] = (grouped[groupKey].countsBySize[sizeName] || 0) + 1;
+    grouped[key].total += 1;
+    grouped[key].countsBySize[sizeName] = 
+      (grouped[key].countsBySize[sizeName] || 0) + 1;
   });
   const groupedArray = Object.values(grouped);
 
-  // Compute grand totals per allowed size and overall.
+  // Grand totals per size + overall total
   const grandTotals: Record<string, number> = {};
   groupedArray.forEach((group) => {
     allowedSizesOrder.forEach((sizeName) => {
-      grandTotals[sizeName] = (grandTotals[sizeName] || 0) + (group.countsBySize[sizeName] || 0);
+      grandTotals[sizeName] = 
+        (grandTotals[sizeName] || 0) + (group.countsBySize[sizeName] || 0);
     });
   });
-  const grandTotalAll = groupedArray.reduce((sum, group) => sum + group.total, 0);
+  const grandTotalAll = groupedArray.reduce((sum, g) => sum + g.total, 0);
 
-  // PDF export function.
+  // PDF export function
   const handleExportPdf = async () => {
     const element = document.getElementById('menu-container');
     if (!element) return;
@@ -73,7 +81,7 @@ const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSize
 
   return (
     <div className="bg-green-500 p-4 rounded shadow mb-8 text-white">
-      {/* Header container with title and logo */}
+      {/* Header */}
       <div className="flex justify-between items-center bg-green-600 p-2 rounded mb-4">
         <h2 className="text-xl font-bold">Menu</h2>
         <Image
@@ -86,14 +94,18 @@ const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSize
           style={{ filter: 'drop-shadow(0 0 2px white)' }}
         />
       </div>
-      {/* Container for PDF export */}
+
+      {/* Table container */}
       <div id="menu-container">
         <table className="min-w-full">
           <thead>
             <tr>
               <th className="p-2 text-left text-white text-sm md:text-base">Strain</th>
               {allowedSizesOrder.map((sizeName) => (
-                <th key={sizeName} className="p-2 text-center text-white text-sm md:text-base">
+                <th
+                  key={sizeName}
+                  className="p-2 text-center text-white text-sm md:text-base"
+                >
                   {sizeName}
                 </th>
               ))}
@@ -101,15 +113,20 @@ const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSize
             </tr>
           </thead>
           <tbody>
-            {groupedArray.map((group, index) => (
-              <tr key={index}>
+            {groupedArray.map((group, idx) => (
+              <tr key={idx}>
                 <td className="p-2 text-white text-sm md:text-base">{group.strainName}</td>
                 {allowedSizesOrder.map((sizeName) => (
-                  <td key={sizeName} className="p-2 text-center text-white text-sm md:text-base">
+                  <td
+                    key={sizeName}
+                    className="p-2 text-center text-white text-sm md:text-base"
+                  >
                     {group.countsBySize[sizeName] || 0}
                   </td>
                 ))}
-                <td className="p-2 text-center font-bold text-white text-sm md:text-base">{group.total}</td>
+                <td className="p-2 text-center font-bold text-white text-sm md:text-base">
+                  {group.total}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -117,22 +134,35 @@ const Menu: React.FC<MenuProps> = ({ inventoryBags, serverStrains, serverBagSize
             <tr>
               <td className="p-2 font-bold text-white text-sm md:text-base">Grand Total</td>
               {allowedSizesOrder.map((sizeName) => (
-                <td key={sizeName} className="p-2 text-center font-bold text-white text-sm md:text-base">
+                <td
+                  key={sizeName}
+                  className="p-2 text-center font-bold text-white text-sm md:text-base"
+                >
                   {grandTotals[sizeName] || 0}
                 </td>
               ))}
-              <td className="p-2 text-center font-bold text-white text-sm md:text-base">{grandTotalAll}</td>
+              <td className="p-2 text-center font-bold text-white text-sm md:text-base">
+                {grandTotalAll}
+              </td>
             </tr>
             <tr>
-              <td colSpan={allowedSizesOrder.length + 2} className="p-2 text-center font-bold bg-green-600 text-white text-sm md:text-base">
+              <td
+                colSpan={allowedSizesOrder.length + 2}
+                className="p-2 text-center font-bold bg-green-600 text-white text-sm md:text-base"
+              >
                 Overall Total Items: {grandTotalAll}
               </td>
             </tr>
           </tfoot>
         </table>
       </div>
+
+      {/* PDF export */}
       <div className="mt-4 text-right">
-        <button onClick={handleExportPdf} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm md:text-base">
+        <button
+          onClick={handleExportPdf}
+          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm md:text-base"
+        >
           Export PDF
         </button>
       </div>

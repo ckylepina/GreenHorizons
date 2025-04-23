@@ -1,3 +1,4 @@
+// components/Dashboard/AdminDashboardComponent.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -8,22 +9,41 @@ import Menu from './InventoryMenu';
 import PendingRoleRequests from './PendingRoleRequest/PendingRoleRequest';
 import HarvestSummaryReport from '../Reports/HarvestSummaryReport';
 import SalesReports from '../Reports/SalesReport';
-import type { Strain, BagSize, HarvestRoom, BagRecord } from '@/components/bag-entry-form/types';
-import type { Profile, Employee, RoleRequest, Tenant, DashboardSalesData } from '@/app/types/dashboard';
-import InvoiceList from './InvoiceList';
+import InvoiceList, { Invoice } from './InvoiceList';
+import {
+  Strain,
+  BagSize,
+  HarvestRoom,
+  BagRecord,
+} from '@/components/bag-entry-form/types';
+import {
+  Profile,
+  Employee,
+  RoleRequest,
+  Tenant,
+  DashboardSalesData,
+} from '@/app/types/dashboard';
 
-interface Invoice {
-  id: string;
-  sale_date: string;
-  total_amount: number;
-  customer_name: string;
-  // removed customer_id since not used in display
-}
+type Tab =
+  | 'overview'
+  | 'inventory'
+  | 'inventoryMenu'
+  | 'harvestSummary'
+  | 'invoices'
+  | 'salesReports';
+
+const tabs: { key: Tab; label: string }[] = [
+  { key: 'overview',       label: 'Overview' },
+  { key: 'inventory',      label: 'Inventory Summary' },
+  { key: 'inventoryMenu',  label: 'Inventory Menu' },
+  { key: 'harvestSummary', label: 'Harvest Summary Report' },
+  { key: 'invoices',       label: 'Invoices' },
+  { key: 'salesReports',   label: 'Sales Reports' },
+];
 
 interface AdminDashboardComponentProps {
   profile: Profile;
   employees: Employee[];
-  dailyBags: BagRecord[];
   inventoryBags: BagRecord[];
   serverStrains: Strain[];
   serverBagSizes: BagSize[];
@@ -31,11 +51,9 @@ interface AdminDashboardComponentProps {
   pendingRoleRequests: RoleRequest[];
   tenants: Tenant[];
   serverSalesData: DashboardSalesData[];
-  allInvoices: Omit<Invoice, 'customer_id'>[];
-  recentInvoices: Omit<Invoice, 'customer_id'>[];
+  allInvoices: Invoice[];
+  recentInvoices: Invoice[];
 }
-
-type Tab = 'overview' | 'inventory' | 'harvestSummary' | 'salesReports' | 'invoices';
 
 export default function AdminDashboardComponent({
   profile,
@@ -52,14 +70,7 @@ export default function AdminDashboardComponent({
 }: AdminDashboardComponentProps) {
   const [selectedTab, setSelectedTab] = useState<Tab>('overview');
 
-  const tabs: { value: Tab; label: string }[] = [
-    { value: 'overview', label: 'Overview' },
-    { value: 'inventory', label: 'Inventory' },
-    { value: 'harvestSummary', label: 'Harvest Summary' },
-    { value: 'salesReports', label: 'Sales Reports' },
-    { value: 'invoices', label: 'Invoices' },
-  ];
-
+  // Mobile dropdown
   const renderTabsDropdown = () => (
     <div className="mb-4 md:hidden">
       <select
@@ -67,27 +78,30 @@ export default function AdminDashboardComponent({
         onChange={(e) => setSelectedTab(e.target.value as Tab)}
         className="w-full p-2 border rounded-md text-sm"
       >
-        {tabs.map((t) => (
-          <option key={t.value} value={t.value}>{t.label}</option>
+        {tabs.map(({ key, label }) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
         ))}
       </select>
     </div>
   );
 
+  // Desktop tabs
   const renderTabsHorizontal = () => (
     <div className="mb-4 border-b hidden md:block">
       <nav className="flex space-x-4">
-        {tabs.map((t) => (
+        {tabs.map(({ key, label }) => (
           <button
-            key={t.value}
-            onClick={() => setSelectedTab(t.value)}
+            key={key}
             className={`py-2 px-4 ${
-              selectedTab === t.value
+              selectedTab === key
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-gray-500'
             }`}
+            onClick={() => setSelectedTab(key)}
           >
-            {t.label}
+            {label}
           </button>
         ))}
       </nav>
@@ -96,32 +110,37 @@ export default function AdminDashboardComponent({
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-2xl md:text-3xl font-bold mb-4">Admin Dashboard</h1>
+      <h1 className="text-2xl md:text-3xl font-bold mb-4">
+        Admin Dashboard
+      </h1>
       <p className="mb-6 text-sm md:text-base">
         Welcome, {profile.first_name} {profile.last_name}!
       </p>
+
       {renderTabsDropdown()}
       {renderTabsHorizontal()}
 
       {selectedTab === 'overview' && (
         <>
-          <Menu
-            inventoryBags={inventoryBags}
-            serverStrains={serverStrains}
-            serverBagSizes={serverBagSizes}
-          />
           <QuickActions />
           <EmployeesSection employees={employees} />
           <section className="mb-8">
-            <h2 className="text-xl md:text-2xl font-semibold mb-2">Pending Role Requests</h2>
-            <PendingRoleRequests initialRequests={pendingRoleRequests} tenants={tenants} />
+            <h2 className="text-xl md:text-2xl font-semibold mb-2">
+              Pending Role Requests
+            </h2>
+            <PendingRoleRequests
+              initialRequests={pendingRoleRequests}
+              tenants={tenants}
+            />
           </section>
         </>
       )}
 
       {selectedTab === 'inventory' && (
         <section className="mb-8">
-          <h2 className="text-xl md:text-2xl font-semibold mb-2">Current Inventory</h2>
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Current Inventory
+          </h2>
           <InventorySummary
             bags={inventoryBags}
             serverStrains={serverStrains}
@@ -131,9 +150,24 @@ export default function AdminDashboardComponent({
         </section>
       )}
 
+      {selectedTab === 'inventoryMenu' && (
+        <section className="mb-8">
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Inventory Menu
+          </h2>
+          <Menu
+            inventoryBags={inventoryBags}
+            serverStrains={serverStrains}
+            serverBagSizes={serverBagSizes}
+          />
+        </section>
+      )}
+
       {selectedTab === 'harvestSummary' && (
         <section className="mb-8">
-          <h2 className="text-xl md:text-2xl font-semibold mb-2">Harvest Summary Report</h2>
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Harvest Summary Report
+          </h2>
           <HarvestSummaryReport
             inventoryBags={inventoryBags}
             serverStrains={serverStrains}
@@ -143,16 +177,24 @@ export default function AdminDashboardComponent({
         </section>
       )}
 
-      {selectedTab === 'salesReports' && (
+      {selectedTab === 'invoices' && (
         <section className="mb-8">
-          <h2 className="text-xl md:text-2xl font-semibold mb-2">Sales Reports</h2>
-          <SalesReports serverSalesData={serverSalesData} />
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Invoices
+          </h2>
+          <InvoiceList
+            recentInvoices={recentInvoices}
+            allInvoices={allInvoices}
+          />
         </section>
       )}
 
-      {selectedTab === 'invoices' && (
+      {selectedTab === 'salesReports' && (
         <section className="mb-8">
-          <InvoiceList allInvoices={allInvoices} recentInvoices={recentInvoices} />
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Sales Reports
+          </h2>
+          <SalesReports serverSalesData={serverSalesData} />
         </section>
       )}
     </main>

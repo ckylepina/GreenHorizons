@@ -13,7 +13,6 @@ import {
   getPendingRoleRequestsWithUserAndRole,
   getAllTenants,
   getCurrentInventory,
-  getDailyBags,
   getMyBags,
 } from '@/utils/supabase/queries';
 
@@ -196,7 +195,6 @@ export default async function HomePage() {
       };
     });
 
-    const dailyBags = await getDailyBags(supabase);
     const inventoryBags = await getMyBags(supabase, employee.id);
     const strains = await getStrains(supabase);
     const bagSizes = await getBagSizeCategories(supabase);
@@ -207,7 +205,6 @@ export default async function HomePage() {
       <AdminDashboardComponent
         profile={profile}
         employees={employees}
-        dailyBags={dailyBags}
         inventoryBags={inventoryBags}
         serverStrains={strains}
         serverBagSizes={bagSizes}
