@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ item: payload }),
+      body: JSON.stringify(payload),
     });
   } catch (netErr) {
     console.error('Network error:', netErr);
