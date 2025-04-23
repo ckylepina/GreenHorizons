@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     rate,
     purchase_rate,
     unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
-    track_inventory: typeof body.track_inventory === 'boolean' ? body.track_inventory : true,
+    track_inventory: true,
     initial_stock:      1,
   };
 
