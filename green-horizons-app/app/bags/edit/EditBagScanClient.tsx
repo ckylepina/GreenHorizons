@@ -133,7 +133,7 @@ export default function EditBagScanClient({
         const body: Record<string, unknown> = { sku: bag.id };
         if (strainName)      body.name        = strainName;
         if (harvestName)     body.cf_harvest  = harvestName;
-        if (sizeName)        body.cf_size     = sizeName;
+        if (sizeName)        body.cf_bag_size     = sizeName;
         if (fields.weight != null) body.package_details = { weight: fields.weight, weight_unit: 'lb' };
 
         console.log('🛠️ [Client] calling updateItem with:', body);

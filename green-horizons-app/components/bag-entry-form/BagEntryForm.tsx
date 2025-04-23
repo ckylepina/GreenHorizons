@@ -7,7 +7,7 @@ import InsertedGroupsList from './InsertedGroupsList';
 import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
 const HARVEST_FIELD_ID = '6118005000000123236';
-const SIZE_FIELD_ID    = '6118005000000280001';
+const SIZE_FIELD_ID    = '6118005000000303114';
 
 interface BagEntryFormProps {
   serverStrains: Strain[];

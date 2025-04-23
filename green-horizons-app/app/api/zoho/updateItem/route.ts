@@ -7,7 +7,7 @@ interface UpdateItemBody {
   sku: string;
   name?: string;
   cf_harvest?: string;
-  cf_size?: string;
+  cf_bag_size?: string;
   Weight?: number;      // incoming “weight” in lbs
 }
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const updateFields: UpdateItemBody = { sku };
   if (typeof body.name === 'string')       updateFields.name       = body.name;
   if (typeof body.cf_harvest === 'string') updateFields.cf_harvest = body.cf_harvest;
-  if (typeof body.cf_size === 'string')    updateFields.cf_size    = body.cf_size;
+  if (typeof body.cf_bag_size === 'string')    updateFields.cf_bag_size    = body.cf_bag_size;
   if (typeof body.Weight === 'number')     updateFields.Weight     = body.Weight;
 
   // must have at least one real field to update
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   // any custom fields we need?
   const custom: { customfield_id: string; value: string }[] = [];
   if (updateFields.cf_harvest) custom.push({ customfield_id: '6118005000000123236', value: updateFields.cf_harvest });
-  if (updateFields.cf_size)    custom.push({ customfield_id: '6118005000000280001', value: updateFields.cf_size });
+  if (updateFields.cf_bag_size)    custom.push({ customfield_id: '6118005000000303114', value: updateFields.cf_bag_size });
   if (custom.length)           payload.custom_fields = custom;
 
   // **new**: if they passed Weight, stick it under package_details
