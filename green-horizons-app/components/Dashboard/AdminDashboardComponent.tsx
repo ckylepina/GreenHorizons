@@ -8,8 +8,17 @@ import Menu from './InventoryMenu';
 import PendingRoleRequests from './PendingRoleRequest/PendingRoleRequest';
 import HarvestSummaryReport from '../Reports/HarvestSummaryReport';
 import SalesReports from '../Reports/SalesReport';
-import { Strain, BagSize, HarvestRoom, BagRecord } from '@/components/bag-entry-form/types';
-import { Profile, Employee, RoleRequest, Tenant, DashboardSalesData } from '@/app/types/dashboard';
+import type { Strain, BagSize, HarvestRoom, BagRecord } from '@/components/bag-entry-form/types';
+import type { Profile, Employee, RoleRequest, Tenant, DashboardSalesData } from '@/app/types/dashboard';
+import InvoiceList from './InvoiceList';
+
+interface Invoice {
+  id: string;
+  sale_date: string;
+  total_amount: number;
+  customer_name: string;
+  // removed customer_id since not used in display
+}
 
 interface AdminDashboardComponentProps {
   profile: Profile;
@@ -22,7 +31,11 @@ interface AdminDashboardComponentProps {
   pendingRoleRequests: RoleRequest[];
   tenants: Tenant[];
   serverSalesData: DashboardSalesData[];
+  allInvoices: Omit<Invoice, 'customer_id'>[];
+  recentInvoices: Omit<Invoice, 'customer_id'>[];
 }
+
+type Tab = 'overview' | 'inventory' | 'harvestSummary' | 'salesReports' | 'invoices';
 
 export default function AdminDashboardComponent({
   profile,
@@ -34,56 +47,49 @@ export default function AdminDashboardComponent({
   pendingRoleRequests,
   tenants,
   serverSalesData,
+  allInvoices,
+  recentInvoices,
 }: AdminDashboardComponentProps) {
-  // The available tabs
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'inventory' | 'harvestSummary' | 'salesReports'>('overview');
+  const [selectedTab, setSelectedTab] = useState<Tab>('overview');
 
-  // For mobile: a dropdown to select the active tab.
+  const tabs: { value: Tab; label: string }[] = [
+    { value: 'overview', label: 'Overview' },
+    { value: 'inventory', label: 'Inventory' },
+    { value: 'harvestSummary', label: 'Harvest Summary' },
+    { value: 'salesReports', label: 'Sales Reports' },
+    { value: 'invoices', label: 'Invoices' },
+  ];
+
   const renderTabsDropdown = () => (
     <div className="mb-4 md:hidden">
       <select
         value={selectedTab}
-        onChange={(e) =>
-          setSelectedTab(e.target.value as 'overview' | 'inventory' | 'harvestSummary' | 'salesReports')
-        }
+        onChange={(e) => setSelectedTab(e.target.value as Tab)}
         className="w-full p-2 border rounded-md text-sm"
       >
-        <option value="overview">Overview</option>
-        <option value="inventory">Inventory</option>
-        <option value="harvestSummary">Harvest Summary Report</option>
-        <option value="salesReports">Sales Reports</option>
+        {tabs.map((t) => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
       </select>
     </div>
   );
 
-  // For desktop: horizontal tab buttons.
   const renderTabsHorizontal = () => (
     <div className="mb-4 border-b hidden md:block">
       <nav className="flex space-x-4">
-        <button
-          className={`py-2 px-4 ${selectedTab === 'overview' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}
-          onClick={() => setSelectedTab('overview')}
-        >
-          Overview
-        </button>
-        <button
-          className={`py-2 px-4 ${selectedTab === 'inventory' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}
-          onClick={() => setSelectedTab('inventory')}
-        >
-          Inventory
-        </button>
-        <button
-          className={`py-2 px-4 ${selectedTab === 'harvestSummary' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}
-          onClick={() => setSelectedTab('harvestSummary')}
-        >
-          Harvest Summary Report
-        </button>
-        <button
-          className={`py-2 px-4 ${selectedTab === 'salesReports' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}
-          onClick={() => setSelectedTab('salesReports')}
-        >
-          Sales Reports
-        </button>
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setSelectedTab(t.value)}
+            className={`py-2 px-4 ${
+              selectedTab === t.value
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-gray-500'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </nav>
     </div>
   );
@@ -96,9 +102,9 @@ export default function AdminDashboardComponent({
       </p>
       {renderTabsDropdown()}
       {renderTabsHorizontal()}
+
       {selectedTab === 'overview' && (
         <>
-          {/* Render the Menu component at the top */}
           <Menu
             inventoryBags={inventoryBags}
             serverStrains={serverStrains}
@@ -112,6 +118,7 @@ export default function AdminDashboardComponent({
           </section>
         </>
       )}
+
       {selectedTab === 'inventory' && (
         <section className="mb-8">
           <h2 className="text-xl md:text-2xl font-semibold mb-2">Current Inventory</h2>
@@ -123,6 +130,7 @@ export default function AdminDashboardComponent({
           />
         </section>
       )}
+
       {selectedTab === 'harvestSummary' && (
         <section className="mb-8">
           <h2 className="text-xl md:text-2xl font-semibold mb-2">Harvest Summary Report</h2>
@@ -134,10 +142,17 @@ export default function AdminDashboardComponent({
           />
         </section>
       )}
+
       {selectedTab === 'salesReports' && (
         <section className="mb-8">
           <h2 className="text-xl md:text-2xl font-semibold mb-2">Sales Reports</h2>
           <SalesReports serverSalesData={serverSalesData} />
+        </section>
+      )}
+
+      {selectedTab === 'invoices' && (
+        <section className="mb-8">
+          <InvoiceList allInvoices={allInvoices} recentInvoices={recentInvoices} />
         </section>
       )}
     </main>

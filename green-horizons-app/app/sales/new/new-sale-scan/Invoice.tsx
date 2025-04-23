@@ -149,46 +149,45 @@ const Invoice: React.FC<InvoiceProps> = ({
         
         {/* Sale Date */}
         <div className="mb-4">
-          <p className="text-sm">Date: {new Date(invoiceData.date).toLocaleDateString()}</p>
+          <p className="text-xs">{new Date(invoiceData.date).toLocaleDateString()}</p>
         </div>
 
         {/* Customer Details */}
-        <div className="border p-4 rounded mb-8">
-          <h2 className="text-xl font-semibold mb-2">Billed To:</h2>
-          <p className="font-bold">
+        <div className="p-4 rounded mb-8">
+          <h2 className="text-lg font-semibold mb-2">Billed To:</h2>
+          <p className="font-bold text-xs">
             {invoiceData.customer.business_name
               ? invoiceData.customer.business_name
               : `${invoiceData.customer.first_name} ${invoiceData.customer.last_name}`}
           </p>
-          <p>Email: {invoiceData.customer.email}</p>
-          <p>Phone: {invoiceData.customer.phone}</p>
+          <p className='font-bold text-xs'> {invoiceData.customer.email}</p>
+          <p className='font-bold text-xs'> {invoiceData.customer.phone}</p>
         </div>
 
         {/* Sale Items Table */}
-        <div className="border p-4 rounded mb-8">
-          <h2 className="text-xl font-semibold mb-2">Sale Items</h2>
+        <div className="p-4 rounded mb-8">
           <table className="min-w-full">
             <thead>
               <tr>
-                <th className="border p-2">Harvest</th>
-                <th className="border p-2">Strain</th>
-                <th className="border p-2">Type</th>
-                <th className="border p-2">lbs</th>
-                <th className="border p-2">Items</th>
-                <th className="border p-2">$ per Bag</th>
-                <th className="border p-2">Subtotal</th>
+                <th className="border-b-4 text-sm p-2">H#</th>
+                <th className="border-b-4 text-sm p-2">Strain</th>
+                <th className="border-b-4 text-sm p-2">Size</th>
+                <th className="border-b-4 text-sm p-2">lbs</th>
+                <th className="border-b-4 text-sm p-2">Qty</th>
+                <th className="border-b-4 text-sm p-2">$/Bag</th>
+                <th className="border-b-4 text-sm p-2">Subtotal</th>
               </tr>
             </thead>
             <tbody>
               {groups.map((group) => (
                 <tr key={group.key}>
-                  <td className="border p-2">{getHarvestRoomName(group.harvest_room_id)}</td>
-                  <td className="border p-2">{getStrainName(group.strain_id)}</td>
-                  <td className="border p-2">{getBagSizeName(group.size_category_id)}</td>
-                  <td className="border p-2">{group.weight}</td>
-                  <td className="border p-2">{group.bags.length}</td>
-                  <td className="border p-2">${pricePerBag.toFixed(2)}</td>
-                  <td className="border p-2">${(pricePerBag * group.bags.length).toFixed(2)}</td>
+                  <td className=" p-2 text-xs">{getHarvestRoomName(group.harvest_room_id)}</td>
+                  <td className=" p-2 text-xs">{getStrainName(group.strain_id)}</td>
+                  <td className=" p-2 text-xs">{getBagSizeName(group.size_category_id)}</td>
+                  <td className=" p-2 text-xs">{group.weight}</td>
+                  <td className=" p-2 text-xs">{group.bags.length}</td>
+                  <td className=" p-2 text-xs">${pricePerBag.toFixed(2)}</td>
+                  <td className=" p-2 text-xs">${(pricePerBag * group.bags.length).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -197,7 +196,7 @@ const Invoice: React.FC<InvoiceProps> = ({
 
         {/* Invoice Total */}
         <div className="text-right mb-8">
-          <p className="text-2xl font-bold">Invoice Total: ${invoiceData.saleTotal.toFixed(2)}</p>
+          <p className="text-xl font-bold">Total: ${invoiceData.saleTotal.toFixed(2)}</p>
         </div>
       </div>
 

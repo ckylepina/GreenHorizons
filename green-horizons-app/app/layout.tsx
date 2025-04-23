@@ -11,6 +11,9 @@ const defaultUrl = process.env.VERCEL_URL
 export const metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Green Horizons",
+  icons: {
+    icon: '/favicon.ico',
+  },
   description:
     "we believe in the power of cannabis to improve health and well-being on a global scale.",
 };
