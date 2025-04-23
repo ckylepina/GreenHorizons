@@ -57,7 +57,7 @@ export default function BagEntryForm({
 
       setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
 
-      // 1b) Sync each bag to Zoho
+      // 1b) Sync each bag to Zoho and store returned item_id
       await Promise.all(insertedRows.map(async (bag) => {
         // look up names
         const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
@@ -99,8 +99,18 @@ export default function BagEntryForm({
         const json = await resp.json();
         console.log('🧪 [Client] Zoho createItem response:', json);
 
-        if (!resp.ok) {
-          console.error('🛑 Failed to sync bag to Zoho:', json);
+        if (resp.ok && json?.item?.item_id) {
+          const zohoItemId = String(json.item.item_id);
+          // **Persist Zoho’s item_id** back on the bag record
+          const { error: updErr } = await supabase
+            .from('bags')
+            .update({ zoho_item_id: zohoItemId })
+            .eq('id', bag.id);
+          if (updErr) {
+            console.error('Failed to save zoho_item_id for bag', bag.id, updErr);
+          }
+        } else {
+          console.error('🛑 Failed to sync bag to Zoho or missing item_id:', json);
         }
       }));
 
@@ -148,7 +158,7 @@ export default function BagEntryForm({
         setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
       }
     } catch (e) {
-      console.error('Unexpected bulk‑edit error:', e);
+      console.error('Unexpected bulk-edit error:', e);
       setMessages([{ type: 'error', text: 'Unexpected error during bulk edit.' }]);
     } finally {
       setLoading(false);
@@ -160,7 +170,7 @@ export default function BagEntryForm({
   function startBulkEdit(groupId: string) {
     setBulkEditGroupId(groupId);
     setBulkEditMode(true);
-    setMessages([{ type: 'success', text: 'Bulk‑edit mode enabled.' }]);
+    setMessages([{ type: 'success', text: 'Bulk-edit mode enabled.' }]);
   }
   function cancelBulkEdit() {
     setBulkEditMode(false);

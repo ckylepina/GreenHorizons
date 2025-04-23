@@ -18,7 +18,7 @@ import {
 
 import AdminDashboardComponent from '@/components/Dashboard/AdminDashboardComponent';
 import SalesDashboard from '@/components/Dashboard/SalesDashboard';
-import InventoryManagementDashboard from '@/app/inventory-management/dashboard';
+import InventoryManagementDashboardComponent from '@/components/Dashboard/InventoryManagementDashboardComponent';
 import CEODashboard from '@/components/CEODashboard';
 import ChiefOfOperationsDashboard from '@/components/Dashboard/ChiefOfOperationsDashboard';
 import TrimManagementDashboard from '@/components/Dashboard/TrimManagementDashboard';
@@ -241,18 +241,14 @@ export default async function HomePage() {
   }
 
   if (role === 'Inventory Management') {
+    const myBags = await getMyBags(supabase, employee.id);
     const inventoryBags = await getCurrentInventory(supabase);
-    const strains = await getStrains(supabase);
-    const bagSizes = await getBagSizeCategories(supabase);
-    const harvestRooms = await getHarvestRooms(supabase);
 
     return (
-      <InventoryManagementDashboard
+      <InventoryManagementDashboardComponent
         user={user}
+        myBags={myBags}
         inventoryBags={inventoryBags}
-        serverStrains={strains}
-        serverBagSizes={bagSizes}
-        serverHarvestRooms={harvestRooms}
       />
     );
   }

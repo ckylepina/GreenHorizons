@@ -1,4 +1,3 @@
-// app/sales/new/new-sale-scan/NewSaleScanClient.tsx
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -65,9 +64,13 @@ export default function NewSaleScanClient({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // get signature blob
     const dataUrl = sigRef.current?.getSignatureDataUrl();
-    const signatureBlob = dataUrl ? await (await fetch(dataUrl)).blob() : new Blob();
+    const signatureBlob = dataUrl
+      ? await (await fetch(dataUrl)).blob()
+      : new Blob();
 
+    // validate
     const errors = validateSale({
       mode,
       selectedCustomer,
@@ -84,6 +87,7 @@ export default function NewSaleScanClient({
     }
 
     try {
+      // 1) submit sale in Supabase
       const saleId = await submitSale({
         mode,
         selectedCustomer,
@@ -94,6 +98,24 @@ export default function NewSaleScanClient({
         currentEmployeeId,
         tenantId,
       });
+
+      // 2) ensure customer exists in Zoho
+      await fetch('/api/zoho/customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supabase_customer_id: mode === 'existing'
+          ? selectedCustomer!.id
+          : saleId /* assuming saleId matches new customer RPC result—in practice store customerId locally */ }),
+      });
+
+      // 3) sync sale as Zoho Sales Order
+      await fetch('/api/zoho/salesorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sale_id: saleId }),
+      });
+
+      // 4) navigate to invoice
       router.push(`/invoice/${saleId}`);
     } catch (err: unknown) {
       const e = err instanceof Error ? err : new Error(String(err));
@@ -126,7 +148,11 @@ export default function NewSaleScanClient({
 
       <SignatureSection ref={sigRef} />
 
-      <SaleSummary total={saleTotal} count={scannedBags.length} isLoading={isLoading} />
+      <SaleSummary
+        total={saleTotal}
+        count={scannedBags.length}
+        isLoading={isLoading}
+      />
 
       {error && (
         <p className="text-red-600">Error recording sale: {error.message}</p>

@@ -142,6 +142,7 @@ export default function BagInsertForm({
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         qr_code: qrData,
+        zoho_item_id: null,
       };
     });
 

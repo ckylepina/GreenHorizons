@@ -108,6 +108,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
         employee_id: data.employee_id || null,
         tenant_id: data.tenant_id || 'tenant1',
         updated_at: data.updated_at || null,
+        zoho_item_id: data.zoho_item_id ?? null,
       };
 
       // Update local state only.

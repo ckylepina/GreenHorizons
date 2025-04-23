@@ -81,6 +81,7 @@ export type Database = {
           tenant_id: string
           updated_at: string | null
           weight: number
+          zoho_item_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -94,6 +95,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string | null
           weight: number
+          zoho_item_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -107,6 +109,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string | null
           weight?: number
+          zoho_item_id?: string | null
         }
         Relationships: [
           {
@@ -221,6 +224,7 @@ export type Database = {
           phone: string | null
           tenant_id: string
           updated_at: string | null
+          zoho_customer_id: string | null
         }
         Insert: {
           address?: string | null
@@ -235,6 +239,7 @@ export type Database = {
           phone?: string | null
           tenant_id: string
           updated_at?: string | null
+          zoho_customer_id?: string | null
         }
         Update: {
           address?: string | null
@@ -249,6 +254,7 @@ export type Database = {
           phone?: string | null
           tenant_id?: string
           updated_at?: string | null
+          zoho_customer_id?: string | null
         }
         Relationships: [
           {
@@ -649,6 +655,7 @@ export type Database = {
           tenant_id: string
           total_amount: number | null
           updated_at: string | null
+          zoho_salesorder_id: string | null
         }
         Insert: {
           cash_transaction_id?: string | null
@@ -661,6 +668,7 @@ export type Database = {
           tenant_id: string
           total_amount?: number | null
           updated_at?: string | null
+          zoho_salesorder_id?: string | null
         }
         Update: {
           cash_transaction_id?: string | null
@@ -673,6 +681,7 @@ export type Database = {
           tenant_id?: string
           total_amount?: number | null
           updated_at?: string | null
+          zoho_salesorder_id?: string | null
         }
         Relationships: [
           {
@@ -835,6 +844,7 @@ export type Database = {
           phone: string | null
           tenant_id: string
           updated_at: string | null
+          zoho_customer_id: string | null
         }[]
       }
       create_reserve_request: {

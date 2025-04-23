@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
   async function upsertBag(item: unknown) {
     if (!isRecord(item)) throw new Error('Invalid item');
     const sku = String(item['sku'] ?? '');
+    const zohoId = String(item['item_id'] ?? '');
     // pull out custom_fields
     const cfRaw   = item['custom_fields'];
     const cfArray = Array.isArray(cfRaw) ? cfRaw : [];
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
         harvest_room_id:  harvestRoom,
         strain_id:        String(item['name'] ?? ''),
         size_category_id: sizeName,
+        zoho_item_id:   zohoId,
         current_status:   'in_inventory',
         updated_at:       now,
         created_at:       now,
