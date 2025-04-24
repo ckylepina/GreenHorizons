@@ -1,3 +1,4 @@
+// app/api/zoho/createItem/route.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
@@ -12,18 +13,27 @@ interface CustomField {
   value:          string;
 }
 
+interface LocationStock {
+  location_id:       string;
+  initial_stock:     number;
+  initial_stock_rate?: number;
+}
+
 interface CreateItemBody {
   name:            string;
   sku:             string;
   rate:            number;
   purchase_rate:   number;
   unit?:           string;
-  track_inventory?:boolean;
+  track_inventory?: boolean;
   package_details?: PackageDetails;
   custom_fields?:   CustomField[];
+  initial_stock?:   number;   // ← optional
+  initial_stock_rate?: number; // ← optional
+  locations?:        LocationStock[]; 
 }
 
-// simple object‑guard
+// simple object-guard
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
@@ -84,9 +94,39 @@ export async function POST(request: NextRequest) {
       }));
   }
 
+  // 3c) optional initial_stock & initial_stock_rate
+  const initialStock = Number(body.initial_stock);
+  const initialRate  = Number(body.initial_stock_rate);
+  if (!isNaN(initialStock) && initialStock >= 0) {
+    payload.initial_stock = initialStock;
+    if (!isNaN(initialRate)) {
+      payload.initial_stock_rate = initialRate;
+    }
+  }
+
+  // 4) Inject locations if tracking inventory
+  if (payload.track_inventory) {
+    const locId = process.env.ZOHO_DEFAULT_WAREHOUSE_ID;
+    if (locId) {
+      // use payload.initial_stock (or default 1)
+      const stock = typeof payload.initial_stock === 'number'
+        ? payload.initial_stock
+        : 1;
+      payload['locations'] = [
+        {
+          location_id:       locId,
+          initial_stock:     stock,
+          initial_stock_rate: payload.initial_stock_rate ?? 0,
+        } as LocationStock
+      ];
+    } else {
+      console.warn('ZOHO_DEFAULT_WAREHOUSE_ID not set; skipping locations');
+    }
+  }
+
   console.log('🧪 [Server] createItem payload:', JSON.stringify(payload, null, 2));
 
-  // 4) get org ID + token
+  // 5) get org ID + token
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID not set' }, { status: 500 });
@@ -99,7 +139,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 5) call Zoho
+  // 6) call Zoho
   const url = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}`;
   let resp: Response;
   try {
@@ -116,7 +156,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 6) parse response
+  // 7) parse response
   let zohoBody: unknown;
   try {
     zohoBody = await resp.json();
