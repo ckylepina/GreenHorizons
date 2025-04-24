@@ -86,6 +86,13 @@ export default function BagEntryForm({
             { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
             { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
           ],
+          locations: [
+            {
+              location_id: '6118005000000091160',  // your warehouse ID
+              initial_stock: 1,                   // one bag per item
+              initial_stock_rate: 0               // cost per bag, if you care
+            }
+          ]
         };
 
         console.log('🧪 [Client] createItem payload:', payload);

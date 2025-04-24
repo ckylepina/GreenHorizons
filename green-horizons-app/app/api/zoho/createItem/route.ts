@@ -18,12 +18,18 @@ interface CreateItemBody {
   rate:            number;
   purchase_rate:   number;
   unit?:           string;
-  track_inventory?:boolean;
+  track_inventory?: boolean;
   package_details?: PackageDetails;
   custom_fields?:   CustomField[];
+  // ← NEW: locations seeded on create
+  locations?: {
+    location_id:       string;
+    initial_stock:     number;
+    initial_stock_rate: number;
+  }[];
 }
 
-// simple object‑guard
+// simple object-guard
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3) build payload
+  // 3) build base payload
   const payload: CreateItemBody = {
     name,
     sku,
@@ -83,6 +89,15 @@ export async function POST(request: NextRequest) {
         value:          String((cf as Record<string, unknown>).value ?? ''),
       }));
   }
+
+  // 3c) seed inventory: one bag per item into your warehouse
+  payload.locations = [
+    {
+      location_id: '6118005000000091160', // ← your warehouse ID
+      initial_stock:     1,               // one unit on-hand
+      initial_stock_rate: 0,              // cost per unit (if any)
+    },
+  ];
 
   console.log('🧪 [Server] createItem payload:', JSON.stringify(payload, null, 2));
 

@@ -6,7 +6,10 @@ import { createClient } from '@/utils/supabase/server';
 
 const HARVEST_FIELD_ID = '6118005000000123236';
 const SIZE_FIELD_ID    = '6118005000000303114';
+// The Zoho location you seed on create:
+const YOUR_WAREHOUSE_ID = '6118005000000091160';
 
+// Type-guard for any object
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
@@ -41,36 +44,37 @@ export async function POST(request: NextRequest) {
   }
   const payload = parsed;
 
-  // 3) Extract module/action/data
+  // 3) Extract module / action / data
   const moduleRaw = payload['module'];
   const actionRaw = payload['action'];
   const dataRaw   = payload['data'];
   if (
     typeof moduleRaw !== 'string' ||
     typeof actionRaw !== 'string' ||
-    !isRecord(dataRaw) && !Array.isArray(dataRaw)
+    (!isRecord(dataRaw) && !Array.isArray(dataRaw))
   ) {
     return NextResponse.json({ error: 'Unexpected webhook payload' }, { status: 400 });
   }
   const moduleName = moduleRaw;
   const action     = actionRaw;
-  const data       = dataRaw;
+  // Normalize to an array of items for easier looping:
+  const items = Array.isArray(dataRaw) ? dataRaw : [dataRaw];
 
-  // 4) Supabase client ready
+  // 4) Supabase ready
   const supabase = await createClient();
   const now      = new Date().toISOString();
 
-  // helper: upsert one bag object from Zoho
+  // Upsert or delete based on Zoho data
   async function upsertBag(item: unknown) {
     if (!isRecord(item)) throw new Error('Invalid item');
     const sku = String(item['sku'] ?? '');
     const zohoId = String(item['item_id'] ?? '');
-    // pull out custom_fields
+
+    // Extract custom_fields
     const cfRaw   = item['custom_fields'];
     const cfArray = Array.isArray(cfRaw) ? cfRaw : [];
     let harvestRoom = '';
     let sizeName    = '';
-
     for (const cf of cfArray) {
       if (!isRecord(cf)) continue;
       const idVal = String(cf['customfield_id'] ?? '');
@@ -82,7 +86,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // upsert into bags
+    // Upsert into Supabase
     const { error } = await supabase
       .from('bags')
       .upsert({
@@ -90,7 +94,7 @@ export async function POST(request: NextRequest) {
         harvest_room_id:  harvestRoom,
         strain_id:        String(item['name'] ?? ''),
         size_category_id: sizeName,
-        zoho_item_id:   zohoId,
+        zoho_item_id:     zohoId,
         current_status:   'in_inventory',
         updated_at:       now,
         created_at:       now,
@@ -99,7 +103,6 @@ export async function POST(request: NextRequest) {
     console.log('📬 Bag upserted:', sku);
   }
 
-  // helper: delete one bag
   async function deleteBag(item: unknown) {
     if (!isRecord(item)) throw new Error('Invalid item');
     const sku = String(item['sku'] ?? '');
@@ -113,21 +116,45 @@ export async function POST(request: NextRequest) {
 
   try {
     if (moduleName === 'items') {
-      // single item
-      if (action === 'created' || action === 'edited') {
-        await upsertBag(data);
-      } else if (action === 'deleted') {
-        await deleteBag(data);
+      for (const itm of items) {
+        // On create → always upsert
+        if (action === 'created') {
+          await upsertBag(itm);
+
+        // On edit → check warehouse stock
+        } else if (action === 'edited') {
+          let qty = 1;
+          if (isRecord(itm) && Array.isArray(itm['locations'])) {
+            for (const loc of itm['locations'] as unknown[]) {
+              if (isRecord(loc) && String(loc['location_id']) === YOUR_WAREHOUSE_ID) {
+                // Zoho may return on_hand_quantity on edit
+                qty = Number(loc['on_hand_quantity'] ?? loc['initial_stock'] ?? qty);
+                break;
+              }
+            }
+          }
+          // if stock is zero, delete; otherwise upsert
+          if (qty <= 0) {
+            await deleteBag(itm);
+          } else {
+            await upsertBag(itm);
+          }
+
+        // On delete → remove bag
+        } else if (action === 'deleted') {
+          await deleteBag(itm);
+        }
       }
+
     } else if (moduleName === 'itemgroups') {
-      // one or more groups
-      const groups = Array.isArray(data) ? data : [data];
-      for (const grp of groups) {
+      // handle groups similarly
+      for (const grp of items) {
         if (!isRecord(grp)) continue;
-        const itemsRaw = grp['items'];
-        const itemsArr = Array.isArray(itemsRaw) ? itemsRaw : [];
-        for (const itm of itemsArr) {
+        const compRaw = grp['items'];
+        const components = Array.isArray(compRaw) ? compRaw : [];
+        for (const itm of components) {
           if (action === 'created' || action === 'edited') {
+            // treat group item same as single item: upsert
             await upsertBag(itm);
           } else if (action === 'deleted') {
             await deleteBag(itm);
