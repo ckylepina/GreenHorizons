@@ -81,13 +81,7 @@ export default function BagEntryForm({
           purchase_rate:   0,
           unit:            'qty',
           track_inventory: true,
-          locations: [
-            {
-              location_id: process.env.ZOHO_DEFAULT_WAREHOUSE_ID!,  // replace with your warehouse ID
-              initial_stock:     1,    // one bag available
-              initial_stock_rate: 0    // cost per bag (if you track COGS)
-            }
-          ],
+          initial_stock:   1,
           package_details: { weight, weight_unit: 'lb' },
           custom_fields: [
             { customfield_id: HARVEST_FIELD_ID, value: harvestValue },

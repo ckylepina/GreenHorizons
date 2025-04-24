@@ -1,4 +1,6 @@
 // app/api/zoho/createItem/route.ts
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
@@ -14,32 +16,32 @@ interface CustomField {
 }
 
 interface LocationStock {
-  location_id:       string;
-  initial_stock:     number;
-  initial_stock_rate?: number;
+  location_id:        string;
+  initial_stock:      number;
+  initial_stock_rate: number;
 }
 
 interface CreateItemBody {
-  name:            string;
-  sku:             string;
-  rate:            number;
-  purchase_rate:   number;
-  unit?:           string;
-  track_inventory?: boolean;
-  package_details?: PackageDetails;
-  custom_fields?:   CustomField[];
-  initial_stock?:   number;   // ← optional
-  initial_stock_rate?: number; // ← optional
-  locations?:        LocationStock[]; 
+  name:              string;
+  sku:               string;
+  rate:              number;
+  purchase_rate:     number;
+  unit?:             string;
+  track_inventory?:  boolean;
+  package_details?:  PackageDetails;
+  custom_fields?:    CustomField[];
+  initial_stock?:    number;
+  initial_stock_rate?:number;
+  locations?:        LocationStock[];
 }
 
-// simple object-guard
+// simple object guard
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) parse JSON
+  // 1) parse JSON body
   let raw: unknown;
   try {
     raw = await request.json();
@@ -47,16 +49,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
   if (!isObject(raw)) {
-    return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 });
+    return NextResponse.json({ error: 'Expected an object' }, { status: 400 });
   }
   const body = raw as Record<string, unknown>;
 
-  // 2) required fields
+  // 2) required fields validation
   const name          = String(body.name ?? '').trim();
   const sku           = String(body.sku  ?? '').trim();
   const rate          = Number(body.rate);
   const purchase_rate = Number(body.purchase_rate);
-
   if (!name || !sku || isNaN(rate) || isNaN(purchase_rate)) {
     return NextResponse.json(
       { error: 'Missing or invalid name, sku, rate or purchase_rate' },
@@ -64,13 +65,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3) build payload
+  // 3) build the base payload
   const payload: CreateItemBody = {
     name,
     sku,
     rate,
     purchase_rate,
-    unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
+    unit:            typeof body.unit === 'string'   ? body.unit   : 'qty',
     track_inventory: typeof body.track_inventory === 'boolean' ? body.track_inventory : true,
   };
 
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
       }));
   }
 
-  // 3c) optional initial_stock & initial_stock_rate
+  // 3c) optional initial_stock / initial_stock_rate
   const initialStock = Number(body.initial_stock);
   const initialRate  = Number(body.initial_stock_rate);
   if (!isNaN(initialStock) && initialStock >= 0) {
@@ -104,30 +105,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 4) Inject locations if tracking inventory
+  // 4) inject locations on the server
   if (payload.track_inventory) {
     const locId = process.env.ZOHO_DEFAULT_WAREHOUSE_ID;
     console.log('🚚 [createItem] ZOHO_DEFAULT_WAREHOUSE_ID =', locId);
     if (locId) {
-      // use payload.initial_stock (or default 1)
-      const stock = typeof payload.initial_stock === 'number'
-        ? payload.initial_stock
-        : 1;
-      payload['locations'] = [
-        {
-          location_id:       locId,
-          initial_stock:     stock,
-          initial_stock_rate: payload.initial_stock_rate ?? 0,
-        } as LocationStock
-      ];
+      payload.locations = [{
+        location_id:        locId,
+        initial_stock:      payload.initial_stock ?? 1,
+        initial_stock_rate: payload.initial_stock_rate ?? 0,
+      }];
     } else {
-      console.warn('ZOHO_DEFAULT_WAREHOUSE_ID not set; skipping locations');
+      console.warn('⚠️ ZOHO_DEFAULT_WAREHOUSE_ID not defined – skipping locations');
     }
   }
 
   console.log('🧪 [Server] createItem payload:', JSON.stringify(payload, null, 2));
 
-  // 5) get org ID + token
+  // 5) get Org ID + OAuth token
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID not set' }, { status: 500 });
@@ -140,7 +135,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 6) call Zoho
+  // 6) call Zoho Inventory createItem
   const url = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}`;
   let resp: Response;
   try {
@@ -157,7 +152,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 7) parse response
+  // 7) handle Zoho response
   let zohoBody: unknown;
   try {
     zohoBody = await resp.json();
