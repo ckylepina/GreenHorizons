@@ -30,6 +30,8 @@ interface CreateItemBody {
     initial_stock:      number;
     initial_stock_rate: number;
   }[];
+  // NEW: accept current_status in the request body
+  current_status?:      string;
 }
 
 // simple guard for objects
@@ -37,8 +39,11 @@ function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
+// TODO: replace with your real Zoho custom field ID for “current_status”
+const STATUS_FIELD_ID = '6118005000000325664';
+
 export async function POST(request: NextRequest) {
-  // 1) parse incoming JSON
+  // 1) parse JSON
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -63,17 +68,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3) build payload
+  // 3) build base payload
   const payload: CreateItemBody = {
     name,
     sku,
     rate,
     purchase_rate,
     unit:                 typeof body.unit === 'string' ? body.unit : 'qty',
-    item_type:            'inventory',     // make it an inventory item
-    product_type:         'goods',         // physical good
-    track_inventory:      true,            // enable stock tracking
-    track_serial_number:  true,            // enable serial-number tracking
+    item_type:            'inventory',
+    product_type:         'goods',
+    track_inventory:      true,
+    track_serial_number:  true,
   };
 
   // 3a) optional package_details
@@ -86,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 3b) optional custom_fields
+  // 3b) optional custom_fields (harvest & size)
   if (Array.isArray(body.custom_fields)) {
     payload.custom_fields = (body.custom_fields as unknown[])
       .filter(isObject)
@@ -94,15 +99,25 @@ export async function POST(request: NextRequest) {
         customfield_id: String((cf as Record<string, unknown>).customfield_id ?? ''),
         value:          String((cf as Record<string, unknown>).value ?? ''),
       }));
+  } else {
+    payload.custom_fields = [];
   }
 
-  // 3c) seed initial stock of 1 unit at your warehouse with a positive rate
+  // 3c) append your bag’s current_status as a Zoho custom field
+  if (typeof body.current_status === 'string' && body.current_status.trim() !== '') {
+    payload.custom_fields.push({
+      customfield_id: STATUS_FIELD_ID,
+      value:          body.current_status.trim(),
+    });
+  }
+
+  // 3d) seed inventory: one bag per item into your warehouse
   const OPENING_RATE = purchase_rate > 0 ? purchase_rate : 1;
   payload.locations = [
     {
       location_id:        '6118005000000091160', // your warehouse ID
       initial_stock:      1,                     // one bag on-hand
-      initial_stock_rate: OPENING_RATE,          // must be > 0
+      initial_stock_rate: OPENING_RATE,          // > 0
     },
   ];
 
@@ -126,7 +141,7 @@ export async function POST(request: NextRequest) {
   let resp: Response;
   try {
     resp = await fetch(url, {
-      method: 'POST',
+      method:  'POST',
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',

@@ -35,6 +35,7 @@ interface ZohoCreateItemRequest {
     initial_stock:      number;
     initial_stock_rate: number;
   }[];
+  current_status?:     string | null;
 }
 
 export default function BagEntryForm({
@@ -117,6 +118,7 @@ export default function BagEntryForm({
                 initial_stock_rate: openingRate,           // strictly positive
               },
             ],
+            current_status:     bag.current_status,
           };
 
         console.log('🧪 [Client] createItem payload:', payload);

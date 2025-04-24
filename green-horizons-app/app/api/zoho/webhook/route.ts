@@ -6,7 +6,9 @@ import { createClient } from '@/utils/supabase/server';
 
 const HARVEST_FIELD_ID = '6118005000000123236';
 const SIZE_FIELD_ID    = '6118005000000303114';
-// The same warehouse/location you seed on create
+// replace with your Zoho custom‐field ID for "current_status"
+const STATUS_FIELD_ID  = '6118005000000325664';
+// the same warehouse ID you seeded on create
 const WAREHOUSE_ID     = '6118005000000091160';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -14,14 +16,12 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 }
 
 export async function POST(request: NextRequest) {
-  // 0) Validate secret
+  // 0) verify secret
   const secret = process.env.ZOHO_WEBHOOK_SECRET;
   if (!secret) {
     console.error('Missing ZOHO_WEBHOOK_SECRET');
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
-
-  // 1) Verify signature
   const rawBody     = await request.text();
   const incomingSig = request.headers.get('X-ZOHO-SIGNATURE') ?? '';
   const expectedSig = createHmac('sha256', secret).update(rawBody).digest('base64');
@@ -30,19 +30,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
-  // 2) Parse JSON
+  // 1) parse JSON
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawBody);
   } catch {
-    console.error('Invalid JSON');
+    console.error('Invalid JSON payload');
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
   if (!isRecord(parsed)) {
     return NextResponse.json({ error: 'Unexpected payload' }, { status: 400 });
   }
 
-  // 3) Extract module, action, data
+  // 2) extract module/action/data
   const moduleName = String(parsed.module ?? '');
   const action     = String(parsed.action ?? '');
   const dataRaw    = parsed.data;
@@ -51,21 +51,21 @@ export async function POST(request: NextRequest) {
   }
   const items = Array.isArray(dataRaw) ? dataRaw : [dataRaw];
 
-  // 4) Initialize Supabase
+  // 3) supabase client
   const supabase = await createClient();
   const now      = new Date().toISOString();
 
-  // Upsert a single bag
+  // 4) upsert helper
   async function upsertBag(item: unknown) {
     if (!isRecord(item)) throw new Error('Invalid item');
-    const sku      = String(item['sku'] ?? '');
-    const zohoId   = String(item['item_id'] ?? '');
-    const name     = String(item['name'] ?? '');
+    const sku    = String(item.sku ?? '');
+    const zohoId = String(item.item_id ?? '');
 
-    // Extract custom fields
-    const cfArr = Array.isArray(item['custom_fields']) ? item['custom_fields'] as unknown[] : [];
-    let harvestRoom = '';
-    let sizeName    = '';
+    // parse custom fields
+    const cfArr = Array.isArray(item.custom_fields) ? item.custom_fields as unknown[] : [];
+    let harvestRoom  = '';
+    let sizeName     = '';
+    let statusValue  = '';
     for (const cf of cfArr) {
       if (!isRecord(cf)) continue;
       const id  = String(cf.customfield_id ?? '');
@@ -74,29 +74,35 @@ export async function POST(request: NextRequest) {
         harvestRoom = val;
       } else if (id === SIZE_FIELD_ID && typeof val === 'string') {
         sizeName = val;
+      } else if (id === STATUS_FIELD_ID && typeof val === 'string') {
+        statusValue = val;
       }
     }
 
+    // default status to in_inventory if missing
+    const currentStatus = statusValue || 'in_inventory';
+
+    // upsert into bags table
     const { error } = await supabase
       .from('bags')
       .upsert({
         qr_code:          sku,
         harvest_room_id:  harvestRoom,
-        strain_id:        name,
+        strain_id:        String(item.name ?? ''),
         size_category_id: sizeName,
         zoho_item_id:     zohoId,
-        current_status:   'in_inventory',
+        current_status:   currentStatus,
         created_at:       now,
         updated_at:       now,
       });
     if (error) throw error;
-    console.log('📬 Bag upserted:', sku);
+    console.log('📬 Bag upserted:', sku, 'status:', currentStatus);
   }
 
-  // Delete a single bag
+  // 5) delete helper
   async function deleteBag(item: unknown) {
     if (!isRecord(item)) throw new Error('Invalid item');
-    const sku = String(item['sku'] ?? '');
+    const sku = String(item.sku ?? '');
     const { error } = await supabase
       .from('bags')
       .delete()
@@ -105,16 +111,17 @@ export async function POST(request: NextRequest) {
     console.log('🗑️ Bag deleted:', sku);
   }
 
+  // 6) handle events
   try {
     if (moduleName === 'items') {
       for (const itm of items) {
         if (action === 'created') {
           await upsertBag(itm);
         } else if (action === 'edited') {
-          // Determine on-hand quantity in your warehouse
+          // check on-hand for your warehouse
           let qty = 1;
-          if (isRecord(itm) && Array.isArray(itm['locations'])) {
-            for (const loc of itm['locations'] as unknown[]) {
+          if (isRecord(itm) && Array.isArray(itm.locations)) {
+            for (const loc of itm.locations as unknown[]) {
               if (!isRecord(loc)) continue;
               if (String(loc.location_id) === WAREHOUSE_ID) {
                 qty = Number(loc.on_hand_quantity ?? loc.initial_stock ?? 0);
@@ -134,7 +141,7 @@ export async function POST(request: NextRequest) {
     } else if (moduleName === 'itemgroups') {
       for (const grp of items) {
         if (!isRecord(grp)) continue;
-        const comps = Array.isArray(grp['items']) ? grp['items'] as unknown[] : [];
+        const comps = Array.isArray(grp.items) ? grp.items as unknown[] : [];
         for (const itm of comps) {
           if (action === 'created' || action === 'edited') {
             await upsertBag(itm);
@@ -146,8 +153,8 @@ export async function POST(request: NextRequest) {
     } else {
       console.warn('Ignored module:', moduleName);
     }
-  } catch (err) {
-    console.error('Error handling webhook:', err);
+  } catch (err: unknown) {
+    console.error('DB error handling webhook:', err);
     return NextResponse.json({ error: 'Database error' }, { status: 500 });
   }
 
