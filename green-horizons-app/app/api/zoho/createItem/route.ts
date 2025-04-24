@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
   // 4) Inject locations if tracking inventory
   if (payload.track_inventory) {
     const locId = process.env.ZOHO_DEFAULT_WAREHOUSE_ID;
+    console.log('🚚 [createItem] ZOHO_DEFAULT_WAREHOUSE_ID =', locId);
     if (locId) {
       // use payload.initial_stock (or default 1)
       const stock = typeof payload.initial_stock === 'number'
