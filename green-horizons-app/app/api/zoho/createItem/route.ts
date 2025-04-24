@@ -1,3 +1,4 @@
+// app/api/zoho/createItem/route.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
@@ -13,18 +14,20 @@ interface CustomField {
 }
 
 interface CreateItemBody {
-  name:            string;
-  sku:             string;
-  rate:            number;
-  purchase_rate:   number;
-  unit?:           string;
-  track_inventory?: boolean;
-  package_details?: PackageDetails;
-  custom_fields?:   CustomField[];
-  // ← NEW: locations seeded on create
+  name:                string;
+  sku:                 string;
+  rate:                number;
+  purchase_rate:       number;
+  unit?:               string;
+  item_type?:          'inventory' | 'sales' | 'purchases' | 'sales_and_purchases';
+  product_type?:       'goods' | 'service';
+  track_inventory?:    boolean;
+  track_serial_number?: boolean;
+  package_details?:    PackageDetails;
+  custom_fields?:      CustomField[];
   locations?: {
-    location_id:       string;
-    initial_stock:     number;
+    location_id:        string;
+    initial_stock:      number;
     initial_stock_rate: number;
   }[];
 }
@@ -66,8 +69,11 @@ export async function POST(request: NextRequest) {
     sku,
     rate,
     purchase_rate,
-    unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
-    track_inventory: typeof body.track_inventory === 'boolean' ? body.track_inventory : true,
+    unit:               typeof body.unit === 'string'  ? body.unit  : 'qty',
+    item_type:          'inventory',    // inventory item
+    product_type:       'goods',        // physical good
+    track_inventory:    true,           // enable stock tracking
+    track_serial_number:true,           // enable serial/lot tracking
   };
 
   // 3a) optional package_details
@@ -93,9 +99,9 @@ export async function POST(request: NextRequest) {
   // 3c) seed inventory: one bag per item into your warehouse
   payload.locations = [
     {
-      location_id: '6118005000000091160', // ← your warehouse ID
-      initial_stock:     1,               // one unit on-hand
-      initial_stock_rate: 0,              // cost per unit (if any)
+      location_id:        '6118005000000091160', // your warehouse
+      initial_stock:      1,                     // one unit on-hand
+      initial_stock_rate: 0,                     // cost per unit
     },
   ];
 

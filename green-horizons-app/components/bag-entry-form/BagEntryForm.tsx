@@ -80,7 +80,10 @@ export default function BagEntryForm({
           rate:            0,
           purchase_rate:   0,
           unit:            'qty',
+          item_type:          'inventory',
+          product_type:       'goods',
           track_inventory: true,
+          track_serial_number:true,
           package_details: { weight, weight_unit: 'lb' },
           custom_fields: [
             { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
