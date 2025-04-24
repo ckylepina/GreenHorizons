@@ -14,17 +14,17 @@ interface CustomField {
 }
 
 interface CreateItemBody {
-  name:                string;
-  sku:                 string;
-  rate:                number;
-  purchase_rate:       number;
-  unit?:               string;
-  item_type?:          'inventory' | 'sales' | 'purchases' | 'sales_and_purchases';
-  product_type?:       'goods' | 'service';
-  track_inventory?:    boolean;
+  name:                 string;
+  sku:                  string;
+  rate:                 number;
+  purchase_rate:        number;
+  unit?:                string;
+  item_type?:           'inventory' | 'sales' | 'purchases' | 'sales_and_purchases';
+  product_type?:        'goods' | 'service';
+  track_inventory?:     boolean;
   track_serial_number?: boolean;
-  package_details?:    PackageDetails;
-  custom_fields?:      CustomField[];
+  package_details?:     PackageDetails;
+  custom_fields?:       CustomField[];
   locations?: {
     location_id:        string;
     initial_stock:      number;
@@ -32,23 +32,23 @@ interface CreateItemBody {
   }[];
 }
 
-// simple object-guard
+// simple guard for objects
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
 export async function POST(request: NextRequest) {
-  // 1) parse JSON
-  let raw: unknown;
+  // 1) parse incoming JSON
+  let rawBody: unknown;
   try {
-    raw = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (!isObject(raw)) {
+  if (!isObject(rawBody)) {
     return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 });
   }
-  const body = raw as Record<string, unknown>;
+  const body = rawBody as Record<string, unknown>;
 
   // 2) required fields
   const name          = String(body.name ?? '').trim();
@@ -63,17 +63,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3) build base payload
+  // 3) build payload
   const payload: CreateItemBody = {
     name,
     sku,
     rate,
     purchase_rate,
-    unit:               typeof body.unit === 'string'  ? body.unit  : 'qty',
-    item_type:          'inventory',    // inventory item
-    product_type:       'goods',        // physical good
-    track_inventory:    true,           // enable stock tracking
-    track_serial_number:true,           // enable serial/lot tracking
+    unit:                 typeof body.unit === 'string' ? body.unit : 'qty',
+    item_type:            'inventory',     // make it an inventory item
+    product_type:         'goods',         // physical good
+    track_inventory:      true,            // enable stock tracking
+    track_serial_number:  true,            // enable serial-number tracking
   };
 
   // 3a) optional package_details
@@ -96,18 +96,19 @@ export async function POST(request: NextRequest) {
       }));
   }
 
-  // 3c) seed inventory: one bag per item into your warehouse
+  // 3c) seed initial stock of 1 unit at your warehouse with a positive rate
+  const OPENING_RATE = purchase_rate > 0 ? purchase_rate : 1;
   payload.locations = [
     {
-      location_id:        '6118005000000091160', // your warehouse
-      initial_stock:      1,                     // one unit on-hand
-      initial_stock_rate: 0,                     // cost per unit
+      location_id:        '6118005000000091160', // your warehouse ID
+      initial_stock:      1,                     // one bag on-hand
+      initial_stock_rate: OPENING_RATE,          // must be > 0
     },
   ];
 
   console.log('🧪 [Server] createItem payload:', JSON.stringify(payload, null, 2));
 
-  // 4) get org ID + token
+  // 4) get Zoho org ID + access token
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID not set' }, { status: 500 });
@@ -115,17 +116,17 @@ export async function POST(request: NextRequest) {
   let token: string;
   try {
     token = await refreshZohoAccessToken();
-  } catch (e) {
-    console.error('Auth error:', e);
+  } catch (err) {
+    console.error('Auth error:', err);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 5) call Zoho
+  // 5) call Zoho Create Item API
   const url = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}`;
   let resp: Response;
   try {
     resp = await fetch(url, {
-      method:  'POST',
+      method: 'POST',
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
@@ -137,21 +138,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Network error' }, { status: 502 });
   }
 
-  // 6) parse response
+  // 6) parse Zoho response
   let zohoBody: unknown;
   try {
     zohoBody = await resp.json();
   } catch {
-    const txt = await resp.text();
-    console.error('Non-JSON Zoho response:', txt);
-    zohoBody = { raw: txt };
+    const text = await resp.text();
+    console.error('Non-JSON Zoho response:', text);
+    zohoBody = { raw: text };
   }
 
   if (!resp.ok) {
     console.error('🛑 Zoho createItem error:', resp.status, zohoBody);
-    return NextResponse.json(zohoBody, { status: resp.status });
+    return NextResponse.json(zohoBody as object, { status: resp.status });
   }
 
   console.log('✅ Zoho createItem success:', zohoBody);
-  return NextResponse.json(zohoBody);
+  return NextResponse.json(zohoBody as object);
 }

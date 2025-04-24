@@ -18,6 +18,25 @@ interface BagEntryFormProps {
   tenantId: string;
 }
 
+interface ZohoCreateItemRequest {
+  name:                string;
+  sku:                 string;
+  rate:                number;
+  purchase_rate:       number;
+  unit:                string;
+  item_type:           'inventory' | 'sales' | 'purchases' | 'sales_and_purchases';
+  product_type:        'goods' | 'service';
+  track_inventory:     boolean;
+  track_serial_number: boolean;
+  package_details:     { weight: number; weight_unit: string };
+  custom_fields:       { customfield_id: string; value: string }[];
+  locations: {
+    location_id:        string;
+    initial_stock:      number;
+    initial_stock_rate: number;
+  }[];
+}
+
 export default function BagEntryForm({
   serverStrains,
   serverBagSizes,
@@ -74,29 +93,31 @@ export default function BagEntryForm({
           ? rawWeight
           : Number(rawWeight.toFixed(2));
 
-        const payload = {
-          name:            strainName,
-          sku:             bag.id,
-          rate:            0,
-          purchase_rate:   0,
-          unit:            'qty',
-          item_type:          'inventory',
-          product_type:       'goods',
-          track_inventory: true,
-          track_serial_number:true,
-          package_details: { weight, weight_unit: 'lb' },
-          custom_fields: [
-            { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
-            { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
-          ],
-          locations: [
-            {
-              location_id: '6118005000000091160',  // your warehouse ID
-              initial_stock: 1,                   // one bag per item
-              initial_stock_rate: 0               // cost per bag, if you care
-            }
-          ]
-        };
+          const openingRate = 1;
+
+          const payload: ZohoCreateItemRequest = {
+            name:               strainName,
+            sku:                bag.id,
+            rate:               0,
+            purchase_rate:      0,
+            unit:               'qty',
+            item_type:          'inventory',
+            product_type:       'goods',
+            track_inventory:    true,
+            track_serial_number:true,
+            package_details:    { weight, weight_unit: 'lb' },
+            custom_fields: [
+              { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
+              { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
+            ],
+            locations: [
+              {
+                location_id:        '6118005000000091160', // your warehouse
+                initial_stock:      1,                     // one bag on-hand
+                initial_stock_rate: openingRate,           // strictly positive
+              },
+            ],
+          };
 
         console.log('🧪 [Client] createItem payload:', payload);
 
