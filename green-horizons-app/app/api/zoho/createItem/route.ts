@@ -25,6 +25,8 @@ interface CreateItemBody {
   initial_stock_rate?: number;   // ← optional
   package_details?:    PackageDetails;
   custom_fields?:      CustomField[];
+  item_type?:      string;
+  product_type?:   string; 
 }
 
 // simple object-guard
@@ -67,6 +69,8 @@ export async function POST(request: NextRequest) {
     unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
     track_inventory: true,               // force inventory on
     initial_stock:   1,                  // start each bag‐SKU with 1 unit
+    item_type:     'inventory',
+    product_type:  'goods',
     // initial_stock_rate: purchase_rate, // if you want to record cost-per-unit
   };
 
