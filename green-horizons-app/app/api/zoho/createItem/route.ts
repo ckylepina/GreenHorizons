@@ -1,3 +1,5 @@
+// app/api/zoho/createItem/route.ts
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { refreshZohoAccessToken } from '@/app/lib/zohoAuth';
@@ -13,19 +15,19 @@ interface CustomField {
 }
 
 interface CreateItemBody {
-  name:            string;
-  sku:             string;
-  rate:            number;
-  purchase_rate:   number;
-  unit?:           string;
-  track_inventory?:boolean;
-  initial_stock?:   number;
-  initial_stock_rate?: number;
-  package_details?: PackageDetails;
-  custom_fields?:   CustomField[];
+  name:                string;
+  sku:                 string;
+  rate:                number;
+  purchase_rate:       number;
+  unit?:               string;
+  track_inventory?:    boolean;
+  initial_stock?:      number;   // ← added
+  initial_stock_rate?: number;   // ← optional
+  package_details?:    PackageDetails;
+  custom_fields?:      CustomField[];
 }
 
-// simple object‑guard
+// simple object-guard
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
@@ -63,8 +65,9 @@ export async function POST(request: NextRequest) {
     rate,
     purchase_rate,
     unit:            typeof body.unit === 'string'  ? body.unit  : 'qty',
-    track_inventory: true,
-    initial_stock:      1,
+    track_inventory: true,               // force inventory on
+    initial_stock:   1,                  // start each bag‐SKU with 1 unit
+    // initial_stock_rate: purchase_rate, // if you want to record cost-per-unit
   };
 
   // 3a) optional package_details
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
       }));
   }
 
-  console.log('🧪 [Server] createItem payload:', JSON.stringify(payload, null, 2));
+  console.log('🧪 [Server] createItem payload:', JSON.stringify({ item: payload }, null, 2));
 
   // 4) get org ID + token
   const orgId = process.env.ZOHO_ORGANIZATION_ID;
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  // 5) call Zoho
+  // 5) call Zoho – wrap payload under `item`
   const url = `https://www.zohoapis.com/inventory/v1/items?organization_id=${orgId}`;
   let resp: Response;
   try {
@@ -112,7 +115,7 @@ export async function POST(request: NextRequest) {
         Authorization: `Zoho-oauthtoken ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ item: payload }),
     });
   } catch (netErr) {
     console.error('Network error:', netErr);
