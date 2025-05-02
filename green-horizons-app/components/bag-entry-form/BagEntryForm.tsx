@@ -6,9 +6,6 @@ import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
 import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
 
-const HARVEST_FIELD_ID = '6118005000000123236';
-const SIZE_FIELD_ID    = '6118005000000303114';
-
 interface BagEntryFormProps {
   serverStrains: Strain[];
   serverBagSizes: BagSize[];
@@ -16,26 +13,6 @@ interface BagEntryFormProps {
   currentUserId: string;
   employeeId: string;
   tenantId: string;
-}
-
-interface ZohoCreateItemRequest {
-  name:                string;
-  sku:                 string;
-  rate:                number;
-  purchase_rate:       number;
-  unit:                string;
-  item_type:           'inventory' | 'sales' | 'purchases' | 'sales_and_purchases';
-  product_type:        'goods' | 'service';
-  track_inventory:     boolean;
-  track_serial_number: boolean;
-  package_details:     { weight: number; weight_unit: string };
-  custom_fields:       { customfield_id: string; value: string }[];
-  locations: {
-    location_id:        string;
-    initial_stock:      number;
-    initial_stock_rate: number;
-  }[];
-  current_status?:     string | null;
 }
 
 export default function BagEntryForm({
@@ -59,7 +36,7 @@ export default function BagEntryForm({
     setMessages([]);
 
     try {
-      // 1a) Insert into Supabase
+      // 1) Insert into Supabase
       const { data: insertedRows, error: insertErr } = await supabase
         .from('bags')
         .insert(newBagsData)
@@ -70,84 +47,15 @@ export default function BagEntryForm({
         setMessages([{ type: 'error', text: 'Failed to insert bags.' }]);
         return;
       }
-      if (!insertedRows?.length) {
+      if (!insertedRows || insertedRows.length === 0) {
         setMessages([{ type: 'error', text: 'No bags inserted.' }]);
         return;
       }
 
+      // 2) Success message
       setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
 
-      // 1b) Sync each bag to Zoho and store returned item_id
-      await Promise.all(insertedRows.map(async (bag) => {
-        // look up names
-        const [{ data: hr }, { data: str }, { data: sz }] = await Promise.all([
-          supabase.from('harvest_rooms').select('name').eq('id', bag.harvest_room_id!).single(),
-          supabase.from('strains').select('name').eq('id', bag.strain_id!).single(),
-          supabase.from('bag_size_categories').select('name').eq('id', bag.size_category_id!).single(),
-        ]);
-
-        const harvestValue = (hr?.name ?? bag.harvest_room_id!).toString().trim() || bag.harvest_room_id!;
-        const strainName  = (str?.name  ?? 'Unknown').toString();
-        const sizeName    = (sz?.name   ?? 'Unknown').toString();
-        const rawWeight   = bag.weight;
-        const weight      = Number.isInteger(rawWeight)
-          ? rawWeight
-          : Number(rawWeight.toFixed(2));
-
-          const openingRate = 1;
-
-          const payload: ZohoCreateItemRequest = {
-            name:               strainName,
-            sku:                bag.id,
-            rate:               0,
-            purchase_rate:      0,
-            unit:               'qty',
-            item_type:          'inventory',
-            product_type:       'goods',
-            track_inventory:    true,
-            track_serial_number:true,
-            package_details:    { weight, weight_unit: 'lb' },
-            custom_fields: [
-              { customfield_id: HARVEST_FIELD_ID, value: harvestValue },
-              { customfield_id: SIZE_FIELD_ID,    value: sizeName    },
-            ],
-            locations: [
-              {
-                location_id:        '6118005000000091160', // your warehouse
-                initial_stock:      1,                     // one bag on-hand
-                initial_stock_rate: openingRate,           // strictly positive
-              },
-            ],
-            current_status:     bag.current_status,
-          };
-
-        console.log('🧪 [Client] createItem payload:', payload);
-
-        const resp = await fetch('/api/zoho/createItem', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload),
-        });
-
-        const json = await resp.json();
-        console.log('🧪 [Client] Zoho createItem response:', json);
-
-        if (resp.ok && json?.item?.item_id) {
-          const zohoItemId = String(json.item.item_id);
-          // **Persist Zoho’s item_id** back on the bag record
-          const { error: updErr } = await supabase
-            .from('bags')
-            .update({ zoho_item_id: zohoItemId })
-            .eq('id', bag.id);
-          if (updErr) {
-            console.error('Failed to save zoho_item_id for bag', bag.id, updErr);
-          }
-        } else {
-          console.error('🛑 Failed to sync bag to Zoho or missing item_id:', json);
-        }
-      }));
-
-      // 1c) Add to UI
+      // 3) Add to UI group list
       const newGroup: InsertedGroup = {
         groupId:   `group-${Date.now()}`,
         bags:       insertedRows,
@@ -157,7 +65,6 @@ export default function BagEntryForm({
         qrCodes:    insertedRows.map((b) => b.qr_code ?? ''),
       };
       setAllGroups((prev) => [...prev, newGroup]);
-
     } catch (err) {
       console.error('Unexpected error in insertNewGroup:', err);
       setMessages([{ type: 'error', text: 'Unexpected error occurred.' }]);
@@ -205,6 +112,7 @@ export default function BagEntryForm({
     setBulkEditMode(true);
     setMessages([{ type: 'success', text: 'Bulk-edit mode enabled.' }]);
   }
+
   function cancelBulkEdit() {
     setBulkEditMode(false);
     setBulkEditGroupId(null);

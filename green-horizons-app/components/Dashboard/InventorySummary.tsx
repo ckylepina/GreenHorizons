@@ -200,7 +200,7 @@ export default function InventorySummary({
     <div className="space-y-8">
       {/* Current Inventory */}
       <section>
-        <h2 className="text-xl font-semibold mb-4">Current Inventory</h2>
+        <h2 className="text-xl font-semibold mb-4">Available Inventory</h2>
         {currentGroups.length === 0 ? (
           <p className="text-gray-500">No bags in inventory.</p>
         ) : (

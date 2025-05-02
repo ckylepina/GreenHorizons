@@ -97,18 +97,21 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     }
     if (data) {
       const bag: BagRecord = {
-        id: data.id || qrValue,
-        current_status: data.current_status || 'in_inventory',
-        harvest_room_id: data.harvest_room_id || 'room1',
-        strain_id: data.strain_id || 'strain1',
-        size_category_id: data.size_category_id || 'size1',
-        created_at: data.created_at || new Date().toISOString(),
-        weight: data.weight || 1,
-        qr_code: data.qr_code || qrValue,
-        employee_id: data.employee_id || null,
-        tenant_id: data.tenant_id || 'tenant1',
-        updated_at: data.updated_at || null,
-        zoho_item_id: data.zoho_item_id ?? null,
+        id: data.id,
+        current_status: data.current_status,
+        harvest_room_id: data.harvest_room_id,
+        strain_id: data.strain_id,
+        size_category_id: data.size_category_id,
+        created_at: data.created_at,
+        weight: data.weight,
+        qr_code: data.qr_code!,
+        employee_id: data.employee_id,
+        tenant_id: data.tenant_id,
+        updated_at: data.updated_at,
+        zoho_item_id: data.zoho_item_id,
+        delivery_person: null,
+        delivery_recipient: null,
+        reserved_for: null,
       };
 
       // Update local state only.

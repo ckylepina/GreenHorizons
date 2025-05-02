@@ -10,6 +10,12 @@ import PendingRoleRequests from './PendingRoleRequest/PendingRoleRequest';
 import HarvestSummaryReport from '../Reports/HarvestSummaryReport';
 import SalesReports from '../Reports/SalesReport';
 import InvoiceList, { Invoice } from './InvoiceList';
+import ReservationsSummary from './ReservationSummary';
+import { ReservedBag } from '../ReservationsGroup';
+import DeliveriesSummary from './DeliveriesSummary';
+import { DeliveredBag } from './DeliveriesGroup';
+import ActivityLogTable, { ActivityEntry } from '../ActivityLog';
+
 import {
   Strain,
   BagSize,
@@ -29,14 +35,20 @@ type Tab =
   | 'inventory'
   | 'inventoryMenu'
   | 'harvestSummary'
+  | 'reservations'
+  | 'deliveries'
+  | 'logs'
   | 'invoices'
   | 'salesReports';
 
 const tabs: { key: Tab; label: string }[] = [
-  { key: 'overview',       label: 'Overview' },
-  { key: 'inventory',      label: 'Inventory Summary' },
-  { key: 'inventoryMenu',  label: 'Inventory Menu' },
-  { key: 'harvestSummary', label: 'Harvest Summary Report' },
+  { key: 'overview',       label: 'Home' },
+  { key: 'inventory',      label: 'Inventory' },
+  { key: 'inventoryMenu',  label: 'Menu' },
+  { key: 'harvestSummary', label: 'Harvest Summary' },
+  { key: 'reservations',   label: 'Reservations' },
+  { key: 'deliveries',     label: 'Deliveries' },
+  { key: 'logs',           label: 'Activity Log' },
   { key: 'invoices',       label: 'Invoices' },
   { key: 'salesReports',   label: 'Sales Reports' },
 ];
@@ -53,6 +65,9 @@ interface AdminDashboardComponentProps {
   serverSalesData: DashboardSalesData[];
   allInvoices: Invoice[];
   recentInvoices: Invoice[];
+  reservedBags: ReservedBag[];
+  deliveredBags: DeliveredBag[];
+  activityEntries: ActivityEntry[];
 }
 
 export default function AdminDashboardComponent({
@@ -67,10 +82,12 @@ export default function AdminDashboardComponent({
   serverSalesData,
   allInvoices,
   recentInvoices,
+  reservedBags,
+  deliveredBags,
+  activityEntries,
 }: AdminDashboardComponentProps) {
   const [selectedTab, setSelectedTab] = useState<Tab>('overview');
 
-  // Mobile dropdown
   const renderTabsDropdown = () => (
     <div className="mb-4 md:hidden">
       <select
@@ -87,7 +104,6 @@ export default function AdminDashboardComponent({
     </div>
   );
 
-  // Desktop tabs
   const renderTabsHorizontal = () => (
     <div className="mb-4 border-b hidden md:block">
       <nav className="flex space-x-4">
@@ -110,9 +126,7 @@ export default function AdminDashboardComponent({
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-2xl md:text-3xl font-bold mb-4">
-        Admin Dashboard
-      </h1>
+      <h1 className="text-2xl md:text-3xl font-bold mb-4">Admin Dashboard</h1>
       <p className="mb-6 text-sm md:text-base">
         Welcome, {profile.first_name} {profile.last_name}!
       </p>
@@ -139,7 +153,7 @@ export default function AdminDashboardComponent({
       {selectedTab === 'inventory' && (
         <section className="mb-8">
           <h2 className="text-xl md:text-2xl font-semibold mb-2">
-            Current Inventory
+            Inventory
           </h2>
           <InventorySummary
             bags={inventoryBags}
@@ -174,6 +188,33 @@ export default function AdminDashboardComponent({
             serverBagSizes={serverBagSizes}
             serverHarvestRooms={serverHarvestRooms}
           />
+        </section>
+      )}
+
+      {selectedTab === 'reservations' && (
+        <section className="mb-8">
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Reservations
+          </h2>
+          <ReservationsSummary bags={reservedBags} />
+        </section>
+      )}
+
+      {selectedTab === 'deliveries' && (
+        <section className="mb-8">
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Deliveries
+          </h2>
+          <DeliveriesSummary data={deliveredBags} />
+        </section>
+      )}
+
+      {selectedTab === 'logs' && (
+        <section className="mb-8">
+          <h2 className="text-xl md:text-2xl font-semibold mb-2">
+            Activity Log
+          </h2>
+          <ActivityLogTable data={activityEntries} />
         </section>
       )}
 

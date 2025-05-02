@@ -1,3 +1,4 @@
+// components/bag-entry-form/BagInsertForm.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -23,84 +24,73 @@ export default function BagInsertForm({
   loading,
   onInsertNewGroup,
 }: BagInsertFormProps) {
-  // Initialize formData. Note: num_bags can be a string or a number.
   const [formData, setFormData] = useState<FormData>({
     harvest_room_id: '',
-    strain_id: '',
-    size_category_id: '',
-    weight: 0,
-    num_bags: '1', // stored as a string to allow an empty value
+    strain_id:       '',
+    size_category_id:'',
+    weight:          0,
+    num_bags:        '1',
   });
 
-  // Reverse the rooms if desired.
   const reversedRooms = [...serverHarvestRooms].reverse();
-
-  // Initially, no strains are shown until a harvest room is selected.
   const [filteredStrains, setFilteredStrains] = useState<Strain[]>([]);
 
-  function handleFormChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
+  function handleFormChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) {
     const { name, value } = e.target;
-    // Declare newValue as string | number.
     let newValue: string | number = value;
 
     if (name === 'num_bags') {
       newValue = value === '' ? '' : parseInt(value, 10);
-      if (isNaN(newValue as number)) {
-        newValue = '';
-      }
+      if (isNaN(newValue as number)) newValue = '';
     } else if (name === 'weight') {
       newValue = value === '' ? 0 : parseFloat(value);
     }
 
-    // Update formData.
     setFormData((prev) => ({
       ...prev,
       [name]: newValue,
     }));
 
-    // When harvest room changes, reset dependent fields and filter strains.
     if (name === 'harvest_room_id') {
       setFormData((prev) => ({
         ...prev,
-        strain_id: '',
+        strain_id:        '',
         size_category_id: '',
-        weight: 0,
-        num_bags: '',
+        weight:           0,
+        num_bags:         '',
       }));
       if (value) {
-        const filtered = serverStrains.filter((strain) => {
-          // If harvest_room_id is an array, check if it includes value; otherwise, compare directly.
-          if (Array.isArray(strain.harvest_room_id)) {
-            return strain.harvest_room_id.includes(value);
-          }
-          return strain.harvest_room_id === value;
-        });
-        setFilteredStrains(filtered);
+        setFilteredStrains(
+          serverStrains.filter((s) =>
+            Array.isArray(s.harvest_room_id)
+              ? s.harvest_room_id.includes(value)
+              : s.harvest_room_id === value
+          )
+        );
       } else {
         setFilteredStrains([]);
       }
     }
 
-    // When strain changes, reset lower-level fields.
     if (name === 'strain_id') {
       setFormData((prev) => ({
         ...prev,
         size_category_id: '',
-        weight: 0,
-        num_bags: '',
+        weight:           0,
+        num_bags:         '',
       }));
     }
 
-    // When bag size changes, reset weight and num_bags.
     if (name === 'size_category_id') {
       setFormData((prev) => ({
         ...prev,
-        weight: 0,
+        weight:   0,
         num_bags: '',
       }));
     }
 
-    // When weight changes, reset num_bags.
     if (name === 'weight') {
       setFormData((prev) => ({
         ...prev,
@@ -111,40 +101,49 @@ export default function BagInsertForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const { strain_id, size_category_id, harvest_room_id, weight, num_bags } = formData;
-    const numBags = typeof num_bags === 'string' ? parseInt(num_bags, 10) : num_bags;
-    if (!strain_id || !size_category_id || !harvest_room_id || weight <= 0 || !numBags || numBags < 1) {
-      // Basic validation.
+    const {
+      strain_id,
+      size_category_id,
+      harvest_room_id,
+      weight,
+      num_bags,
+    } = formData;
+    const count = typeof num_bags === 'string'
+      ? parseInt(num_bags, 10)
+      : num_bags;
+
+    if (
+      !strain_id ||
+      !size_category_id ||
+      !harvest_room_id ||
+      weight <= 0 ||
+      !count ||
+      count < 1
+    ) {
       return;
     }
 
-    const uniqueTime = Date.now();
+    const now = new Date().toISOString();
 
-    const newBagsData: Omit<BagRecord, 'id'>[] = Array.from({ length: numBags }, (_, idx) => {
-      const uniqueSuffix = `-${uniqueTime}-${Math.floor(Math.random() * 100000)}`;
-      const qrData = JSON.stringify({
+    const newBagsData: Omit<BagRecord, 'id'>[] = Array.from(
+      { length: count },
+      () => ({
         strain_id,
         size_category_id,
         harvest_room_id,
+        employee_id:       employeeId,
+        tenant_id:         tenantId,
         weight,
-        bag_index: idx + 1,
-        unique: uniqueSuffix,
-      });
-
-      return {
-        strain_id,
-        size_category_id,
-        harvest_room_id,
-        employee_id: employeeId,
-        tenant_id: tenantId,
-        weight,
-        current_status: 'in_inventory',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        qr_code: qrData,
-        zoho_item_id: null,
-      };
-    });
+        current_status:    'in_inventory' as const,
+        created_at:        now,
+        updated_at:        now,
+        qr_code:           '',  // no longer generating QR JSON
+        zoho_item_id:      null, 
+        delivery_person:   null,  // satisfy BagRecord shape
+        delivery_recipient:null,
+        reserved_for:      null,
+      })
+    );
 
     await onInsertNewGroup(newBagsData);
   }
@@ -166,9 +165,9 @@ export default function BagInsertForm({
           <option value="">Select Harvest Room</option>
           {reversedRooms
             .sort((a, b) => {
-              const numA = parseInt(a.name.replace(/[^0-9]/g, ''), 10);
-              const numB = parseInt(b.name.replace(/[^0-9]/g, ''), 10);
-              return numA - numB;
+              const na = parseInt(a.name.replace(/\D/g, ''), 10);
+              const nb = parseInt(b.name.replace(/\D/g, ''), 10);
+              return na - nb;
             })
             .reverse()
             .map((room) => (
@@ -191,9 +190,9 @@ export default function BagInsertForm({
           disabled={!formData.harvest_room_id}
         >
           <option value="">Select Strain</option>
-          {filteredStrains.map((strain) => (
-            <option key={strain.id} value={strain.id}>
-              {strain.name}
+          {filteredStrains.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
             </option>
           ))}
         </select>
@@ -211,9 +210,9 @@ export default function BagInsertForm({
           disabled={!formData.strain_id}
         >
           <option value="">Select Bag Size</option>
-          {serverBagSizes.map((size) => (
-            <option key={size.id} value={size.id}>
-              {size.name}
+          {serverBagSizes.map((sz) => (
+            <option key={sz.id} value={sz.id}>
+              {sz.name}
             </option>
           ))}
         </select>
@@ -221,12 +220,11 @@ export default function BagInsertForm({
 
       {/* Weight */}
       <label className="flex flex-col gap-1">
-        <span>Weight (lbs or grams):</span>
+        <span>Weight (lbs):</span>
         <input
           type="number"
           name="weight"
           step="0.01"
-          min="0"
           className="border px-3 py-2 rounded"
           placeholder="e.g. 5.0"
           value={formData.weight === 0 ? '' : formData.weight}

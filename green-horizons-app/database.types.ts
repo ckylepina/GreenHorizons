@@ -68,14 +68,52 @@ export type Database = {
         }
         Relationships: []
       }
+      bag_status_logs: {
+        Row: {
+          bag_id: string
+          changed_at: string
+          changed_by: string | null
+          id: string
+          new_status: string
+          old_status: string
+        }
+        Insert: {
+          bag_id: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_status: string
+          old_status: string
+        }
+        Update: {
+          bag_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_status?: string
+          old_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bag_status_logs_bag_id_fkey"
+            columns: ["bag_id"]
+            isOneToOne: false
+            referencedRelation: "bags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bags: {
         Row: {
           created_at: string | null
           current_status: Database["public"]["Enums"]["bag_status"] | null
+          delivery_person: string | null
+          delivery_recipient: string | null
           employee_id: string | null
           harvest_room_id: string | null
           id: string
           qr_code: string
+          reserved_for: string | null
           size_category_id: string
           strain_id: string | null
           tenant_id: string
@@ -86,10 +124,13 @@ export type Database = {
         Insert: {
           created_at?: string | null
           current_status?: Database["public"]["Enums"]["bag_status"] | null
+          delivery_person?: string | null
+          delivery_recipient?: string | null
           employee_id?: string | null
           harvest_room_id?: string | null
           id?: string
           qr_code: string
+          reserved_for?: string | null
           size_category_id: string
           strain_id?: string | null
           tenant_id: string
@@ -100,10 +141,13 @@ export type Database = {
         Update: {
           created_at?: string | null
           current_status?: Database["public"]["Enums"]["bag_status"] | null
+          delivery_person?: string | null
+          delivery_recipient?: string | null
           employee_id?: string | null
           harvest_room_id?: string | null
           id?: string
           qr_code?: string
+          reserved_for?: string | null
           size_category_id?: string
           strain_id?: string | null
           tenant_id?: string

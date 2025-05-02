@@ -43,6 +43,9 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { cache } from 'react';
 import type { Database } from '@/database.types';
 import { SalesData } from '@/app/types/dashboard';
+import { ReservedBag } from '@/components/ReservationsGroup';
+import { DeliveredBag } from '@/components/DeliveriesTable';
+import { ActivityEntry } from '@/components/ActivityLog';
 
 
 /** =============================================================================
@@ -443,6 +446,71 @@ export async function getDailyBags(
 
   return data ?? [];
 }
+
+export const getReservedBags = cache(async (supabase: SupabaseClient): Promise<ReservedBag[]> => {
+  const { data, error } = await supabase
+    .from<'bags', ReservedBag>('bags')
+    .select(`
+      id,
+      qr_code,
+      reserved_for,
+      updated_at,
+      weight,
+      harvest_room:harvest_rooms(name),
+      strain:strains(name),
+      size:bag_size_categories(name)
+    `)
+    .eq('current_status', 'reserved')
+    .order('updated_at', { ascending: false });
+  if (error) {
+    console.error('getReservedBags error', error);
+    throw error;
+  }
+  return data ?? [];
+});
+
+export const getDeliveredBags = cache(async (supabase: SupabaseClient): Promise<DeliveredBag[]> => {
+  const { data, error } = await supabase
+    .from<'bags', DeliveredBag>('bags')
+    .select(`
+      id,
+      qr_code,
+      delivery_person,
+      delivery_recipient,
+      updated_at,
+      weight,
+      harvest_room:harvest_rooms(name),
+      strain:strains(name),
+      size:bag_size_categories(name)
+    `)
+    .eq('current_status', 'out_for_delivery')
+    .order('updated_at', { ascending: false });
+  if (error) {
+    console.error('getDeliveredBags error', error);
+    throw error;
+  }
+  return data ?? [];
+});
+
+export const getActivityLog = cache(async (supabase: SupabaseClient): Promise<ActivityEntry[]> => {
+  const { data, error } = await supabase
+    .from<'bag_status_logs', ActivityEntry>('bag_status_logs')
+    .select(`
+      id,
+      bag_id,
+      old_status,
+      new_status,
+      changed_at,
+      changed_by
+    `)
+    .order('changed_at', { ascending: false })
+    .limit(50);
+  if (error) {
+    console.error('getActivityLog error', error);
+    throw error;
+  }
+  return data ?? [];
+});
 
   export async function getReserveRequests(
     supabase: SupabaseClient,

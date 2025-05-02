@@ -1,6 +1,6 @@
-// app/(…)/home/page.tsx
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
+
 import {
   getCurrentUser,
   getProfileByUserId,
@@ -14,6 +14,9 @@ import {
   getAllTenants,
   getCurrentInventory,
   getMyBags,
+  getReservedBags,
+  getDeliveredBags,
+  getActivityLog,
 } from '@/utils/supabase/queries';
 
 import AdminDashboardComponent from '@/components/Dashboard/AdminDashboardComponent';
@@ -32,21 +35,52 @@ import type {
   DashboardSalesData,
 } from '@/app/types/dashboard';
 
-// Define a type for CEO sales record.
+// These three are the new types for the inline tabs:
+export interface ReservedBag {
+  id: string;
+  qr_code: string;
+  reserved_for: string;
+  updated_at: string;
+  weight: number;
+  harvest_room: { name: string }[];
+  strain:       { name: string }[];
+  size:         { name: string }[];
+}
+export interface DeliveredBag {
+  id: string;
+  qr_code: string;
+  delivery_person:    string;
+  delivery_recipient: string;
+  updated_at:         string;
+  weight:             number;
+  harvest_room:       { name: string }[];
+  strain:             { name: string }[];
+  size:               { name: string }[];
+}
+export interface ActivityEntry {
+  id:         string;
+  bag_id:     string;
+  old_status: string;
+  new_status: string;
+  changed_at: string;
+  changed_by: string;
+}
+
+// CEO‐view sales record type
 export interface SalesRecord extends SalesData {
-  date: string;
-  actual: number;
-  forecast: number;
-  inflow: number;
-  outflow: number;
+  date:           string;
+  actual:         number;
+  forecast:       number;
+  inflow:         number;
+  outflow:        number;
   otherFinancial: number;
 }
 
 // Transform raw SalesData → DashboardSalesData
 const transformSalesDataForDashboard = (
-  rawSalesData: SalesData[]
+  raw: SalesData[]
 ): DashboardSalesData[] =>
-  rawSalesData.map((sale) => ({
+  raw.map((sale) => ({
     ...sale,
     date: sale.sale_date,
     total: sale.total_amount,
@@ -56,18 +90,18 @@ const transformSalesDataForDashboard = (
 const transformSalesRecordsForCEO = (raw: SalesData[]): SalesRecord[] =>
   raw.map((sale) => ({
     ...sale,
-    date: sale.sale_date,
-    actual: sale.total_amount,
-    forecast: sale.total_amount,
-    inflow: 0,
-    outflow: 0,
+    date:          sale.sale_date,
+    actual:        sale.total_amount,
+    forecast:      sale.total_amount,
+    inflow:        0,
+    outflow:       0,
     otherFinancial: 0,
   }));
 
 export default async function HomePage() {
   const supabase = await createClient();
 
-  // 1. Current user
+  // 1) Current user
   const rawUser = await getCurrentUser(supabase);
   if (!rawUser) {
     redirect('/sign-in');
@@ -75,21 +109,21 @@ export default async function HomePage() {
   }
   const user: User = { id: rawUser.id, email: rawUser.email ?? null };
 
-  // 2. Profile
+  // 2) Profile
   const profile = await getProfileByUserId(supabase, user.id);
   if (!profile) {
     redirect('/sign-in');
     return null;
   }
 
-  // 3. Employee record
+  // 3) Employee record
   const employee = await getProfileEmployeeRecord(supabase, profile.id);
   if (!employee) {
     redirect('/request-role');
     return null;
   }
 
-  // 4. Pending role requests
+  // 4) Pending role requests
   const rawRoleRequests = (await getPendingRoleRequestsWithUserAndRole(
     supabase
   )) as unknown[];
@@ -118,13 +152,13 @@ export default async function HomePage() {
     };
   });
 
-  // 5. Tenants
+  // 5) Tenants
   const tenants = await getAllTenants(supabase);
 
-  // 6. Role name
+  // 6) Role name
   const role = employee.role_name;
 
-  // 7. Fetch all sales (invoices) once up-front for “Invoices” tab
+  // 7) Sales/invoices
   const allInvoices = (await getSales(supabase, {})).map((sale) => ({
     id: sale.id,
     sale_date: sale.sale_date,
@@ -139,55 +173,63 @@ export default async function HomePage() {
     return new Date(inv.sale_date) >= sevenDaysAgo;
   });
 
-  // Role-based branches:
+  // ——— Inline-tab data for admin ———
+  // 8) Reserved bags
+  const reservedBags    = await getReservedBags(supabase);
+  // 9) Out-for-delivery bags
+  const deliveredBags   = await getDeliveredBags(supabase);
+  // 10) Recent activity log
+  const activityEntries = await getActivityLog(supabase);
+
+  console.log('💡[HomePage] reservedBags:', JSON.stringify(reservedBags, null, 2));
+  console.log('💡[HomePage] deliveredBags:', JSON.stringify(deliveredBags, null, 2));
+  console.log('💡[HomePage] activityEntries:', JSON.stringify(activityEntries, null, 2));
+  
+  // —— Role‐based rendering ——
 
   if (role === 'Chief Executive Officer') {
-    const rawSalesData = await getSales(supabase, {});
+    const rawSales = await getSales(supabase, {});
     return (
-      <CEODashboard salesData={transformSalesRecordsForCEO(rawSalesData)} />
+      <CEODashboard
+        salesData={transformSalesRecordsForCEO(rawSales)}
+      />
     );
   }
 
   if (role === 'admin' || role === 'Super Admin') {
-    // fetch admin dashboard data
-    // Fetch as unknown[]
+    // 11) Employees
     const rawEmployees = (await getAllEmployees(supabase)) as unknown[];
-
-    // Narrow each record explicitly—no `any`
     const employees: Employee[] = rawEmployees.map((e) => {
-      // First assert it's an object
       if (typeof e !== 'object' || e === null) {
         throw new Error('Unexpected employee record format');
       }
-      // Then pull out only the fields you expect
       const {
         id,
         created_at,
         profiles,
         roles,
-        tenants,
+        tenants: tnts,
         role_name,
         profile_id,
         role_id,
-      } = e as Record<string, unknown>;  // minimal use of `any` just for destructuring, not for whole type
-
+      } = e as Record<string, unknown>;
       return {
         id: String(id),
         created_at: String(created_at),
         profiles: Array.isArray(profiles)
-          ? profiles as Profile[]
+          ? (profiles as Profile[])
           : profiles
           ? [profiles as Profile]
           : [],
         roles: Array.isArray(roles)
-          ? roles as { id: string; name: string }[]
+          ? (roles as { id: string; name: string }[])
           : roles
           ? [roles as { id: string; name: string }]
           : [],
-        tenants: Array.isArray(tenants)
-          ? tenants as { id: string; name: string }[]
-          : tenants
-          ? [tenants as { id: string; name: string }]
+        tenants: Array.isArray(tnts)
+          ? (tnts as { id: string; name: string }[])
+          : tnts
+          ? [tnts as { id: string; name: string }]
           : [],
         role_name: role_name ? String(role_name) : '',
         profile_id: profile_id ? String(profile_id) : '',
@@ -195,11 +237,12 @@ export default async function HomePage() {
       };
     });
 
-    const inventoryBags = await getMyBags(supabase, employee.id);
-    const strains = await getStrains(supabase);
-    const bagSizes = await getBagSizeCategories(supabase);
-    const harvestRooms = await getHarvestRooms(supabase);
-    const rawSalesData = await getSales(supabase, {});
+    // 12) Inventory & lookups
+    const inventoryBags  = await getMyBags(supabase, employee.id);
+    const strains        = await getStrains(supabase);
+    const bagSizes       = await getBagSizeCategories(supabase);
+    const harvestRooms   = await getHarvestRooms(supabase);
+    const rawSalesData   = await getSales(supabase, {});
 
     return (
       <AdminDashboardComponent
@@ -214,6 +257,9 @@ export default async function HomePage() {
         serverSalesData={transformSalesDataForDashboard(rawSalesData)}
         allInvoices={allInvoices}
         recentInvoices={recentInvoices}
+        reservedBags={reservedBags}
+        deliveredBags={deliveredBags}
+        activityEntries={activityEntries}
       />
     );
   }
@@ -241,9 +287,8 @@ export default async function HomePage() {
   }
 
   if (role === 'Inventory Management') {
-    const myBags = await getMyBags(supabase, employee.id);
+    const myBags        = await getMyBags(supabase, employee.id);
     const inventoryBags = await getCurrentInventory(supabase);
-
     return (
       <InventoryManagementDashboardComponent
         user={user}
@@ -253,6 +298,6 @@ export default async function HomePage() {
     );
   }
 
-  // fallback
+  // Fallback
   return <div>Unknown role: {role}</div>;
 }
