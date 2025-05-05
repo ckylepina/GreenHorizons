@@ -1,9 +1,12 @@
+// components/bag-entry-form/BulkEditForm.tsx
 'use client';
 
-import React, { useState } from 'react';
-import { Strain, BagSize, BagRecord } from './types';
+import React, { useState, useEffect } from 'react';
+import type { Strain, BagSize, BagRecord, BulkEditData } from './types';
 
 interface BulkEditFormProps {
+  /** Initial data to populate the form */
+  initialData?: BulkEditData;
   loading: boolean;
   onCancel: () => void;
   onApplyBulkEdit: (fields: Partial<BagRecord>) => Promise<void>;
@@ -13,6 +16,7 @@ interface BulkEditFormProps {
 }
 
 export default function BulkEditForm({
+  initialData = {},
   loading,
   onCancel,
   onApplyBulkEdit,
@@ -20,67 +24,85 @@ export default function BulkEditForm({
   serverStrains,
   serverBagSizes,
 }: BulkEditFormProps) {
-  const [bulkEditData, setBulkEditData] = useState<Partial<BagRecord>>({});
+  // Form state: fields may be undefined if user leaves them “No Change”
+  const [harvestRoomId, setHarvestRoomId] = useState<string | undefined>(
+    initialData.harvest_room_id
+  );
+  const [strainId, setStrainId] = useState<string | undefined>(
+    initialData.strain_id
+  );
+  const [sizeId, setSizeId] = useState<string | undefined>(
+    initialData.size_category_id
+  );
+  const [weight, setWeight] = useState<number | undefined>(
+    initialData.weight
+  );
 
-  function handleBulkEditChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
-    const { name, value } = e.target;
-    if (name === 'weight') {
-      // Convert string to float
-      setBulkEditData((prev) => ({ ...prev, weight: parseFloat(value) }));
+  // Strains filtered by selected harvest room
+  const [filteredStrains, setFilteredStrains] = useState<Strain[]>([]);
+
+  // Whenever harvestRoomId changes, reset downstream and filter strains
+  useEffect(() => {
+    if (harvestRoomId) {
+      setFilteredStrains(
+        serverStrains.filter((s) =>
+          Array.isArray(s.harvest_room_id)
+            ? s.harvest_room_id.includes(harvestRoomId)
+            : s.harvest_room_id === harvestRoomId
+        )
+      );
     } else {
-      setBulkEditData((prev) => ({ ...prev, [name]: value }));
+      setFilteredStrains([]);
     }
-  }
+
+    // Reset dependent fields
+    setStrainId(undefined);
+    setSizeId(undefined);
+    setWeight(undefined);
+  }, [harvestRoomId, serverStrains]);
+
+  // If the selected strain falls out of the filtered list, clear it
+  useEffect(() => {
+    if (strainId && !filteredStrains.find((s) => s.id === strainId)) {
+      setStrainId(undefined);
+      setSizeId(undefined);
+      setWeight(undefined);
+    }
+  }, [strainId, filteredStrains]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // If no fields, do nothing
-    if (Object.keys(bulkEditData).length === 0) {
-      alert('No fields provided for bulk update.');
+    // Build a type‐safe updates object
+    const updates: Partial<BagRecord> = {};
+    if (harvestRoomId)   updates.harvest_room_id    = harvestRoomId;
+    if (strainId)        updates.strain_id         = strainId;
+    if (sizeId)          updates.size_category_id = sizeId;
+    if (weight != null)  updates.weight            = weight;
+
+    if (Object.keys(updates).length === 0) {
+      alert('No changes to apply.');
       return;
     }
 
-    // NOTE: Removed the "harvest_number" recalculation 
-    // because your schema no longer needs it.
-
-    // Call the parent callback to apply the edit
-    await onApplyBulkEdit(bulkEditData);
+    await onApplyBulkEdit(updates);
   }
 
-  // Example: if user changes strain, you could filter harvest rooms. 
-  // For brevity, we assume any re-filtering is handled at a higher level.
-
   return (
-    <div className="mt-4 p-3 border rounded">
-      <h4 className="font-semibold mb-2">Bulk Edit</h4>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-        {/* Strain (optional) */}
-        <label className="flex flex-col gap-1">
-          <span>Strain (optional):</span>
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md mx-auto">
+      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+        Edit Group
+      </h4>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Harvest Room */}
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Harvest Room
+          </span>
           <select
-            name="strain_id"
-            className="border px-2 py-1 rounded"
-            value={bulkEditData.strain_id || ''}
-            onChange={handleBulkEditChange}
-          >
-            <option value="">— No Change —</option>
-            {serverStrains.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Harvest Room (optional) */}
-        <label className="flex flex-col gap-1">
-          <span>Harvest Room (optional):</span>
-          <select
-            name="harvest_room_id"
-            className="border px-2 py-1 rounded"
-            value={bulkEditData.harvest_room_id || ''}
-            onChange={handleBulkEditChange}
+            value={harvestRoomId ?? ''}
+            onChange={(e) => setHarvestRoomId(e.target.value || undefined)}
+            className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">— No Change —</option>
             {reversedRooms.map((r) => (
@@ -91,14 +113,36 @@ export default function BulkEditForm({
           </select>
         </label>
 
-        {/* Bag Size (optional) */}
-        <label className="flex flex-col gap-1">
-          <span>Bag Size (optional):</span>
+        {/* Strain */}
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Strain
+          </span>
           <select
-            name="size_category_id"
-            className="border px-2 py-1 rounded"
-            value={bulkEditData.size_category_id || ''}
-            onChange={handleBulkEditChange}
+            value={strainId ?? ''}
+            onChange={(e) => setStrainId(e.target.value || undefined)}
+            disabled={!harvestRoomId}
+            className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">— No Change —</option>
+            {filteredStrains.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Bag Size */}
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Bag Size
+          </span>
+          <select
+            value={sizeId ?? ''}
+            onChange={(e) => setSizeId(e.target.value || undefined)}
+            disabled={!strainId}
+            className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">— No Change —</option>
             {serverBagSizes.map((b) => (
@@ -109,34 +153,38 @@ export default function BulkEditForm({
           </select>
         </label>
 
-        {/* Weight (optional) */}
-        <label className="flex flex-col gap-1">
-          <span>Weight (optional):</span>
+        {/* Weight */}
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Weight
+          </span>
           <input
             type="number"
-            name="weight"
             step="0.01"
-            className="border px-2 py-1 rounded"
-            value={bulkEditData.weight ?? ''}
-            onChange={handleBulkEditChange}
+            value={weight ?? ''}
+            onChange={(e) =>
+              setWeight(e.target.value === '' ? undefined : parseFloat(e.target.value))
+            }
+            disabled={!strainId}
+            className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
           />
         </label>
 
-        {/* Submit / Cancel */}
-        <div className="flex gap-2 pt-2">
-          <button
-            type="submit"
-            className="bg-green-600 text-white px-3 py-1 rounded"
-            disabled={loading}
-          >
-            {loading ? 'Saving...' : 'Apply Bulk Edit'}
-          </button>
+        {/* Buttons */}
+        <div className="flex justify-end space-x-2 pt-2">
           <button
             type="button"
             onClick={onCancel}
-            className="bg-gray-400 text-white px-3 py-1 rounded"
+            className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
           >
             Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
       </form>

@@ -1,14 +1,14 @@
 // components/bag-entry-form/types.ts
+
 import { Database } from '@/database.types';
 
-// Use the generated row type for bags as-is.
-export type BagRecord = Database["public"]["Tables"]["bags"]["Row"];
+/** Your “bags” row type from Supabase */
+export type BagRecord = Database['public']['Tables']['bags']['Row'];
 
-// Use the generated row type for customers.
-// This ensures that all properties, including id, first_name, etc., match your database.
-export type Customer = Database["public"]["Tables"]["customers"]["Row"];
+/** Your “customers” row type, if you need it */
+export type Customer = Database['public']['Tables']['customers']['Row'];
 
-// Type for grouping scanned bags.
+/** When you group a batch of scanned/inserted bags together */
 export interface BagGroup {
   key: string;
   harvest_room_id: string | null;
@@ -18,7 +18,7 @@ export interface BagGroup {
   bags: BagRecord[];
 }
 
-// Other interfaces remain unchanged.
+/** Harvest-room, strain, and size lookups */
 export interface Strain {
   id: string;
   name: string;
@@ -35,6 +35,7 @@ export interface HarvestRoom {
   name: string;
 }
 
+/** The form’s local state for new-bag entry */
 export interface FormData {
   harvest_room_id: string;
   strain_id: string;
@@ -43,6 +44,7 @@ export interface FormData {
   num_bags: number | string;
 }
 
+/** What you store in state after insertion, for printing/editing UI */
 export interface InsertedGroup {
   groupId: string;
   bagIds: (string | null)[];
@@ -51,3 +53,14 @@ export interface InsertedGroup {
   insertedAt: string;
   bags?: BagRecord[];
 }
+
+/** 
+ * Exactly the four fields you allow bulk-edit on
+ * (so TS and Supabase both agree on the payload shape)
+ */
+export type BulkEditData = {
+  harvest_room_id?: string;
+  strain_id?: string;
+  size_category_id?: string;
+  weight?: number;
+};

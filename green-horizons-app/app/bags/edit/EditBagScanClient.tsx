@@ -22,7 +22,7 @@ interface EditBagScanClientProps {
   initialHarvestRooms: HarvestRoom[];
 }
 
-// Helper: group bags by room, strain, size & weight
+// Helper: group by room, strain, size & weight
 function groupBags(bags: BagRecord[]): GroupedBags[] {
   const map: Record<string, GroupedBags> = {};
   bags.forEach((bag) => {
@@ -63,7 +63,6 @@ export default function EditBagScanClient({
   const getBagSizeName = (id?: string | null) =>
     initialBagSizes.find((b) => b.id === id)?.name || 'Unknown';
 
-  // Scan one code
   async function handleScanBag(qrValue: string) {
     if (!qrValue || lastScannedCodeRef.current === qrValue) return;
     lastScannedCodeRef.current = qrValue;
@@ -89,7 +88,6 @@ export default function EditBagScanClient({
     }, 1000);
   }
 
-  // Called by QR scanner
   function handleScan(detected: IDetectedBarcode[]) {
     if (isProcessingScan) return;
     setIsProcessingScan(true);
@@ -97,18 +95,15 @@ export default function EditBagScanClient({
     setTimeout(() => setIsProcessingScan(false), 1000);
   }
 
-  // Update both Supabase & Zoho
   async function updateGroup(groupKey: string, fields: Partial<BagRecord>) {
     const group = groups.find((g) => g.key === groupKey);
     if (!group) return;
     const bagIds = group.bags.map((b) => b.id);
 
-    // 1) Supabase update
-    const { data: updatedRows, error } = await supabase
+    const {  error } = await supabase
       .from('bags')
       .update(fields)
       .in('id', bagIds)
-      .select();
 
     if (error) {
       console.error('Supabase update error:', error);
@@ -116,39 +111,8 @@ export default function EditBagScanClient({
       return;
     }
 
-    // 2) Build human‑readable values
-    const harvestName = fields.harvest_room_id
-      ? getHarvestRoomName(fields.harvest_room_id)
-      : undefined;
-    const sizeName = fields.size_category_id
-      ? getBagSizeName(fields.size_category_id)
-      : undefined;
-    const strainName = fields.strain_id
-      ? getStrainName(fields.strain_id)
-      : undefined;
+    // (Zoho sync omitted)
 
-    // 3) Push updates to Zoho
-    await Promise.all(
-      (updatedRows || []).map(async (bag) => {
-        const body: Record<string, unknown> = { sku: bag.id };
-        if (strainName)      body.name        = strainName;
-        if (harvestName)     body.cf_harvest  = harvestName;
-        if (sizeName)        body.cf_bag_size     = sizeName;
-        if (fields.weight != null) body.package_details = { weight: fields.weight, weight_unit: 'lb' };
-
-        console.log('🛠️ [Client] calling updateItem with:', body);
-
-        const resp = await fetch('/api/zoho/updateItem', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const json = await resp.json();
-        console.log(`🛠️ [Client] updateItem response status=${resp.status}`, json);
-      })
-    );
-
-    // 4) Update local UI
     setScannedBags((prev) =>
       prev.map((b) => (bagIds.includes(b.id) ? { ...b, ...fields } : b))
     );
@@ -157,7 +121,6 @@ export default function EditBagScanClient({
     alert('Updated locally and in Zoho!');
   }
 
-  // Print labels
   function printLabelsForGroup(groupKey: string) {
     const el = document.getElementById(`printable-area-${groupKey}`);
     if (!el) return;
@@ -166,12 +129,7 @@ export default function EditBagScanClient({
     if (!w) return;
     w.document.write(`
       <html><head><title>Print</title>
-        <style>
-          @media print {
-            @page { size: 3.5in 1.1in; margin: 0 }
-          }
-          body { margin: 0; padding: 0 }
-        </style>
+        <style>@media print { @page { size: 3.5in 1.1in; margin: 0 } } body { margin:0; padding:0 }</style>
       </head><body>${html}</body></html>
     `);
     w.document.close();
@@ -179,11 +137,12 @@ export default function EditBagScanClient({
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-8">
+    <div className="container mx-auto px-4 py-8 space-y-8 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <h1 className="text-2xl font-bold">Edit Bags (Scan QR Codes)</h1>
+
       <button
         onClick={() => setShowScanner((s) => !s)}
-        className="bg-blue-500 text-white px-4 py-2 rounded"
+        className="bg-blue-500 dark:bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600 dark:hover:bg-blue-700"
       >
         {showScanner ? 'Hide Scanner' : 'Show Scanner'}
       </button>
@@ -200,37 +159,66 @@ export default function EditBagScanClient({
         </div>
       )}
 
-      {groups.length === 0 && <p>No bags scanned yet.</p>}
+      {groups.length === 0 && (
+        <p className="text-center text-gray-500 dark:text-gray-400">
+          No bags scanned yet.
+        </p>
+      )}
 
       {groups.map((group) => (
-        <div key={group.key} className="border p-4 rounded space-y-4">
-          <div className="flex justify-between items-center">
+        <div
+          key={group.key}
+          className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded space-y-4 p-4"
+        >
+          {/* Group Header */}
+          <div className="flex justify-between items-start">
             <div className="space-y-1">
-              <div>
+              <p className="font-semibold text-lg">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  Group ID:
+                </span>{' '}
+                {group.key.slice(0, 8)}
+              </p>
+
+              {/* ➤ New: list of bag IDs */}
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                <span className="font-medium">Bag IDs:</span>{' '}
+                {group.bags.map((b) => b.id.slice(0, 8)).join(', ')}
+              </p>
+
+              <p>
                 <strong>Harvest Room:</strong>{' '}
-                {group.harvest_room_id
-                  ? getHarvestRoomName(group.harvest_room_id)
-                  : 'Unknown'}
-              </div>
-              <div>
+                <span className="text-gray-700 dark:text-gray-300">
+                  {getHarvestRoomName(group.harvest_room_id)}
+                </span>
+              </p>
+              <p>
                 <strong>Strain:</strong>{' '}
-                {group.strain_id ? getStrainName(group.strain_id) : 'Unknown'}
-              </div>
-              <div>
+                <span className="text-gray-700 dark:text-gray-300">
+                  {getStrainName(group.strain_id)}
+                </span>
+              </p>
+              <p>
                 <strong>Bag Size:</strong>{' '}
-                {group.size_category_id
-                  ? getBagSizeName(group.size_category_id)
-                  : 'Unknown'}
-              </div>
-              <div>
-                <strong>Weight:</strong> {group.weight} lbs
-              </div>
-              <div>
-                <strong>Count:</strong> {group.bags.length}
-              </div>
+                <span className="text-gray-700 dark:text-gray-300">
+                  {getBagSizeName(group.size_category_id)}
+                </span>
+              </p>
+              <p>
+                <strong>Weight:</strong>{' '}
+                <span className="text-gray-700 dark:text-gray-300">
+                  {group.weight} lbs
+                </span>
+              </p>
+              <p>
+                <strong>Count:</strong>{' '}
+                <span className="text-gray-700 dark:text-gray-300">
+                  {group.bags.length}
+                </span>
+              </p>
             </div>
-            <div className="flex items-center space-x-4">
-              {/* Edit icon */}
+
+            <div className="flex items-center space-x-3">
               <button
                 onClick={() => {
                   setEditingGroupKey(group.key);
@@ -245,40 +233,34 @@ export default function EditBagScanClient({
                 title="Edit this group"
                 aria-label="Edit this group"
               >
-                <div className='bg-blue-500 text-white px-3 py-2 rounded'>
-                  <FaEdit size={22} />
-                </div>
+                <FaEdit className="text-blue-600 dark:text-blue-400" size={20} />
               </button>
 
-              {/* Print icon */}
               <button
                 onClick={() => printLabelsForGroup(group.key)}
                 className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                 title="Print labels for this group"
                 aria-label="Print labels for this group"
               >
-                <div className='bg-blue-500 text-white px-3 py-2 rounded'>
-                  <FaPrint size={22}/>
-                </div>
+                <FaPrint className="text-green-600 dark:text-green-400" size={20} />
               </button>
             </div>
           </div>
 
-          {/* Editing form */}
+          {/* Edit Form */}
           {editingGroupKey === group.key && (
-            <div className="space-y-4">
-              {/* Harvest Room selector */}
-              <div>
-                <label className="block font-semibold mb-1">Harvest Room</label>
+            <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded p-4 space-y-4">
+              {/* Harvest Room */}
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Harvest Room
+                </span>
                 <select
                   value={editFields.harvest_room_id || ''}
                   onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      harvest_room_id: e.target.value,
-                    }))
+                    setEditFields((f) => ({ ...f, harvest_room_id: e.target.value }))
                   }
-                  className="border p-2 rounded w-full"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">— select —</option>
                   {[...initialHarvestRooms]
@@ -292,17 +274,19 @@ export default function EditBagScanClient({
                       </option>
                     ))}
                 </select>
-              </div>
+              </label>
 
-              {/* Strain selector */}
-              <div>
-                <label className="block font-semibold mb-1">Strain</label>
+              {/* Strain */}
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Strain
+                </span>
                 <select
                   value={editFields.strain_id || ''}
                   onChange={(e) =>
                     setEditFields((f) => ({ ...f, strain_id: e.target.value }))
                   }
-                  className="border p-2 rounded w-full"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">— select —</option>
                   {initialStrains.map((s) => (
@@ -311,20 +295,19 @@ export default function EditBagScanClient({
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              {/* Bag Size selector */}
-              <div>
-                <label className="block font-semibold mb-1">Bag Size</label>
+              {/* Bag Size */}
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Bag Size
+                </span>
                 <select
                   value={editFields.size_category_id || ''}
                   onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      size_category_id: e.target.value,
-                    }))
+                    setEditFields((f) => ({ ...f, size_category_id: e.target.value }))
                   }
-                  className="border p-2 rounded w-full"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">— select —</option>
                   {initialBagSizes.map((b) => (
@@ -333,35 +316,34 @@ export default function EditBagScanClient({
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              {/* Weight input */}
-              <div>
-                <label className="block font-semibold mb-1">Weight (lbs)</label>
+              {/* Weight */}
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Weight (lbs)
+                </span>
                 <input
                   type="number"
                   step="0.01"
                   value={editFields.weight ?? ''}
                   onChange={(e) =>
-                    setEditFields((f) => ({
-                      ...f,
-                      weight: parseFloat(e.target.value) || 0,
-                    }))
+                    setEditFields((f) => ({ ...f, weight: parseFloat(e.target.value) || 0 }))
                   }
-                  className="border p-2 rounded w-full"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
                 />
-              </div>
+              </label>
 
-              <div className="flex gap-2">
+              <div className="flex justify-end space-x-2 pt-2">
                 <button
                   onClick={() => updateGroup(group.key, editFields)}
-                  className="bg-blue-600 text-white px-4 py-2 rounded"
+                  className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-800"
                 >
                   Save
                 </button>
                 <button
                   onClick={() => setEditingGroupKey(null)}
-                  className="bg-gray-400 text-white px-4 py-2 rounded"
+                  className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded hover:bg-gray-400 dark:hover:bg-gray-500"
                 >
                   Cancel
                 </button>
@@ -369,11 +351,8 @@ export default function EditBagScanClient({
             </div>
           )}
 
-          {/* Hidden printable area */}
-          <div
-            id={`printable-area-${group.key}`}
-            className="hidden"
-          >
+          {/* Printable labels */}
+          <div id={`printable-area-${group.key}`} className="hidden">
             <LabelsToPrint
               bags={group.bags}
               serverStrains={initialStrains}

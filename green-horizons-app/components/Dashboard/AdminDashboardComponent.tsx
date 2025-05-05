@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
+
 import QuickActions from '@/components/Dashboard/quick-actions/QuickActions';
 import EmployeesSection from '@/components/Dashboard/EmployeeSection';
 import InventorySummary from '@/components/Dashboard/InventorySummary';
@@ -13,8 +14,9 @@ import InvoiceList, { Invoice } from './InvoiceList';
 import ReservationsSummary from './ReservationSummary';
 import { ReservedBag } from '../ReservationsGroup';
 import DeliveriesSummary from './DeliveriesSummary';
-import { DeliveredBag } from './DeliveriesGroup';
+import { DeliveredBag } from './DeliveriesSummary';
 import ActivityLogTable, { ActivityEntry } from '../ActivityLog';
+import RecentBagGroupsPanel from './RecentBagGroupsPanel';
 
 import {
   Strain,
@@ -29,6 +31,7 @@ import {
   Tenant,
   DashboardSalesData,
 } from '@/app/types/dashboard';
+import type { BagGroupSummary } from '@/app/types/dashboard';
 
 type Tab =
   | 'overview'
@@ -68,6 +71,9 @@ interface AdminDashboardComponentProps {
   reservedBags: ReservedBag[];
   deliveredBags: DeliveredBag[];
   activityEntries: ActivityEntry[];
+
+  // NEW:
+  recentBagGroups: BagGroupSummary[];
 }
 
 export default function AdminDashboardComponent({
@@ -85,6 +91,7 @@ export default function AdminDashboardComponent({
   reservedBags,
   deliveredBags,
   activityEntries,
+  recentBagGroups,
 }: AdminDashboardComponentProps) {
   const [selectedTab, setSelectedTab] = useState<Tab>('overview');
 
@@ -138,6 +145,7 @@ export default function AdminDashboardComponent({
         <>
           <QuickActions />
           <EmployeesSection employees={employees} />
+
           <section className="mb-8">
             <h2 className="text-xl md:text-2xl font-semibold mb-2">
               Pending Role Requests
@@ -145,6 +153,20 @@ export default function AdminDashboardComponent({
             <PendingRoleRequests
               initialRequests={pendingRoleRequests}
               tenants={tenants}
+            />
+          </section>
+
+          {/* New Recently Added Batches Panel */}
+          <section className="mb-8">
+            <h2 className="text-xl md:text-2xl font-semibold mb-2">
+              Recently Added
+            </h2>
+            <RecentBagGroupsPanel
+              groups={recentBagGroups}
+              serverStrains={serverStrains}
+              serverBagSizes={serverBagSizes}
+              serverHarvestRooms={serverHarvestRooms}
+              viewAllHref="/all-groups"
             />
           </section>
         </>

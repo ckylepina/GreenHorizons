@@ -98,21 +98,22 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     if (data) {
       const bag: BagRecord = {
         id: data.id,
+        group_id: data.group_id,             // ← this was missing
         current_status: data.current_status,
         harvest_room_id: data.harvest_room_id,
         strain_id: data.strain_id,
         size_category_id: data.size_category_id,
-        created_at: data.created_at,
         weight: data.weight,
         qr_code: data.qr_code!,
         employee_id: data.employee_id,
         tenant_id: data.tenant_id,
-        updated_at: data.updated_at,
         zoho_item_id: data.zoho_item_id,
-        delivery_person: null,
-        delivery_recipient: null,
-        reserved_for: null,
-      };
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        delivery_person: data.delivery_person,
+        delivery_recipient: data.delivery_recipient,
+        reserved_for: data.reserved_for,
+      };    
 
       // Update local state only.
       setScannedBags(prev => {

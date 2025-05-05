@@ -42,11 +42,21 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { cache } from 'react';
 import type { Database } from '@/database.types';
-import { SalesData } from '@/app/types/dashboard';
+import { SalesData, BagGroupSummary } from '@/app/types/dashboard';
 import { ReservedBag } from '@/components/ReservationsGroup';
-import { DeliveredBag } from '@/components/DeliveriesTable';
+import { DeliveredBag } from '@/components/Dashboard/DeliveriesSummary';
 import { ActivityEntry } from '@/components/ActivityLog';
 
+export interface BagWithNames {
+  id:           string;
+  group_id:     string;
+  qr_code:      string;
+  updated_at:   string;
+  weight:       number;
+  harvest_room: { name: string }[];
+  strain:       { name: string }[];
+  size:         { name: string }[];
+}
 
 /** =============================================================================
  *  1) AUTH QUERIES
@@ -511,6 +521,45 @@ export const getActivityLog = cache(async (supabase: SupabaseClient): Promise<Ac
   }
   return data ?? [];
 });
+
+export async function getAllGroups(
+  supabase: SupabaseClient,
+  page = 1,
+  perPage = 20
+): Promise<{
+  data: BagGroupSummary[] | null
+  count: number | null
+  error: any
+}> {
+  const from = (page - 1) * perPage
+  const to   = from + perPage - 1
+
+  const { data, count, error } = await supabase
+    .from('bag_group_summary')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, to)
+
+  return {
+    data: data as BagGroupSummary[] | null,
+    count,
+    error,
+  }
+}
+
+export async function getRecentBagGroups(
+  supabase: SupabaseClient,
+  limit = 10
+): Promise<BagGroupSummary[]> {
+  const { data, error } = await supabase
+    .from('bag_group_summary')
+    .select('group_id, created_at, bag_count, total_weight, strain_id, size_category_id, harvest_room_id')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return data as BagGroupSummary[]
+}
 
   export async function getReserveRequests(
     supabase: SupabaseClient,

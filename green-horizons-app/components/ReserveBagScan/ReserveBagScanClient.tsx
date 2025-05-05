@@ -1,13 +1,12 @@
-// components/ReserveBagScanClient.tsx
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Scanner, type IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import type { Strain, BagSize, HarvestRoom, BagRecord } from '@/components/bag-entry-form/types';
+import { FaPlus, FaTrash, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
-type ActionType = 'reserved' | 'out_for_delivery';
-
+// Component to scan bags and reserve or dispatch them, grouped by group_id
 export default function ReserveBagScanClient({
   initialStrains,
   initialBagSizes,
@@ -17,15 +16,19 @@ export default function ReserveBagScanClient({
   initialBagSizes: BagSize[];
   initialHarvestRooms: HarvestRoom[];
 }) {
-  const [actionType, setActionType]       = useState<ActionType | null>(null);
-  const [showScanner, setShowScanner]     = useState(false);
-  const [scannedBags, setScannedBags]     = useState<BagRecord[]>([]);
-  const [reservedFor, setReservedFor]     = useState('');
-  const [deliveredBy, setDeliveredBy]     = useState('');
-  const [deliveredTo, setDeliveredTo]     = useState('');
-  const [processing, setProcessing]       = useState(false);
-  const lastScanned                       = useRef<string | null>(null);
+  type ActionType = 'reserved' | 'out_for_delivery';
 
+  const [actionType, setActionType] = useState<ActionType | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedBags, setScannedBags] = useState<BagRecord[]>([]);
+  const [reservedFor, setReservedFor] = useState('');
+  const [deliveredBy, setDeliveredBy] = useState('');
+  const [deliveredTo, setDeliveredTo] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const lastScanned = React.useRef<string | null>(null);
+
+  // Reset state
   const handleBack = () => {
     setActionType(null);
     setShowScanner(false);
@@ -33,39 +36,28 @@ export default function ReserveBagScanClient({
     setReservedFor('');
     setDeliveredBy('');
     setDeliveredTo('');
+    setExpandedGroups({});
   };
 
-  // Group scanned bags by attributes
+  // Group scannedBags by group_id or individual id
   const groups = useMemo(() => {
-    const map: Record<string, {
-      key: string;
-      harvest_room_id: string | null;
-      strain_id: string | null;
-      size_category_id: string | null;
-      weight: number;
-      bags: BagRecord[];
-    }> = {};
-    for (const bag of scannedBags) {
-      const key = `${bag.harvest_room_id}_${bag.strain_id}_${bag.size_category_id}_${bag.weight}`;
-      if (!map[key]) {
-        map[key] = {
-          key,
-          harvest_room_id: bag.harvest_room_id,
-          strain_id: bag.strain_id,
-          size_category_id: bag.size_category_id,
-          weight: bag.weight,
-          bags: [],
-        };
-      }
+    const map: Record<string, { group_id: string; bags: BagRecord[] }> = {};
+    scannedBags.forEach(bag => {
+      const key = bag.group_id ?? bag.id;
+      if (!map[key]) map[key] = { group_id: key, bags: [] };
       map[key].bags.push(bag);
-    }
+    });
     return Object.values(map);
   }, [scannedBags]);
 
+  // Helper to get names
   const getName = (list: { id: string; name: string }[], id: string | null) =>
     id ? list.find(x => x.id === id)?.name ?? 'Unknown' : 'Unknown';
 
-  // Handle QR codes from scanner
+  const toggleGroup = (id: string) =>
+    setExpandedGroups(prev => ({ ...prev, [id]: !prev[id] }));
+
+  // Scanner callback
   async function handleScan(codes: IDetectedBarcode[]) {
     for (const { rawValue } of codes) {
       if (!rawValue || lastScanned.current === rawValue) continue;
@@ -76,176 +68,173 @@ export default function ReserveBagScanClient({
         .eq('qr_code', rawValue)
         .eq('current_status', 'in_inventory')
         .single();
-      if (!error && data) {
-        setScannedBags(prev =>
-          prev.some(b => b.id === data.id) ? prev : [...prev, data]
-        );
-      }
+      if (!error && data) setScannedBags(prev => prev.some(b => b.id === data.id) ? prev : [...prev, data]);
       setTimeout(() => { lastScanned.current = null; }, 1000);
     }
   }
 
-  // Commit reservation or delivery to Supabase
-  async function submitAction() {
-    if (!actionType || scannedBags.length === 0) return;
+  // Add entire group
+  async function addGroup(groupId: string) {
     setProcessing(true);
-
-    const ids = scannedBags.map(b => b.id);
-    const updateFields: Partial<BagRecord> & Record<string, string> = {
-      current_status: actionType,
-    };
-    if (actionType === 'reserved') {
-      updateFields.reserved_for = reservedFor;
-    } else {
-      updateFields.delivery_person    = deliveredBy;
-      updateFields.delivery_recipient = deliveredTo;
-    }
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('bags')
-      .update(updateFields)
-      .in('id', ids);
-
-    if (error) {
-      alert('Failed to update bags.');
-    } else {
-      alert(`Marked ${ids.length} bag(s) as ${actionType.replace('_', ' ')}.`);
-      handleBack();
+      .select('*')
+      .eq('group_id', groupId)
+      .eq('current_status', 'in_inventory');
+    if (!error && data) {
+      setScannedBags(prev => {
+        const existing = new Set(prev.map(b => b.id));
+        const toAdd = data.filter(b => !existing.has(b.id));
+        return [...prev, ...toAdd];
+      });
     }
     setProcessing(false);
   }
 
+  // Remove entire group
+  function removeGroup(groupId: string) {
+    setScannedBags(prev => prev.filter(b => (b.group_id ?? b.id) !== groupId));
+    setExpandedGroups(prev => {
+      const copy = { ...prev };
+      delete copy[groupId];
+      return copy;
+    });
+  }
+
+  // Submit reservation/delivery
+  async function submitAction() {
+    if (!actionType || scannedBags.length === 0) return;
+    setProcessing(true);
+    const ids = scannedBags.map(b => b.id);
+    const updateFields: Partial<BagRecord> & Record<string,string> = { current_status: actionType };
+    if (actionType === 'reserved') updateFields.reserved_for = reservedFor;
+    else {
+      updateFields.delivery_person = deliveredBy;
+      updateFields.delivery_recipient = deliveredTo;
+    }
+    const { error } = await supabase.from('bags').update(updateFields).in('id', ids);
+    if (!error) alert(`Marked ${ids.length} bag(s) as ${actionType.replace('_',' ')}`);
+    setProcessing(false);
+    handleBack();
+  }
+
   return (
     <div className="max-w-xl mx-auto p-4 space-y-6 text-gray-900 dark:text-gray-100">
-      {/* STEP 1: Choose action */}
-      {!actionType && (
+      {/* Step 1: Action Choice */}
+      {!actionType ? (
         <div className="flex gap-4 justify-center">
-          <button
-            onClick={() => setActionType('reserved')}
-            className="px-6 py-3 bg-blue-500 dark:bg-blue-600 text-white dark:text-white rounded hover:bg-blue-600 dark:hover:bg-blue-700"
-          >
+          <button onClick={() => setActionType('reserved')} className="px-6 py-3 bg-blue-500 dark:bg-blue-600 text-white rounded">
             Reserve Bags
           </button>
-          <button
-            onClick={() => setActionType('out_for_delivery')}
-            className="px-6 py-3 bg-green-500 dark:bg-green-700 text-white rounded hover:bg-green-600 dark:hover:bg-green-800"
-          >
+          <button onClick={() => setActionType('out_for_delivery')} className="px-6 py-3 bg-green-500 dark:bg-green-700 text-white rounded">
             Out for Delivery
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-4">
+          <button onClick={handleBack} className="text-sm text-gray-700 dark:text-gray-300 hover:underline">
+            ← Change Action
+          </button>
+          <button onClick={() => setShowScanner(s => !s)} className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded">
+            {showScanner ? 'Hide Scanner' : 'Show Scanner'}
           </button>
         </div>
       )}
 
-      {actionType && (
-        <>
-          {/* Back button */}
-          <button
-            onClick={handleBack}
-            className="text-sm p-2 text-gray-700 dark:text-gray-300 hover:underline"
-          >
-            ← Change Action
-          </button>
-
-          {/* Toggle scanner */}
-          <button
-            onClick={() => setShowScanner(s => !s)}
-            className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-800"
-          >
-            {showScanner ? 'Hide Scanner' : 'Show Scanner'}
-          </button>
-        </>
-      )}
-
-      {/* STEP 2: Scanner */}
+      {/* Step 2: Scanner */}
       {actionType && showScanner && (
-        <div className="border border-gray-300 dark:border-gray-600 p-4 rounded bg-white dark:bg-gray-800">
+        <div className="border p-4 rounded bg-white dark:bg-gray-800">
           <h3 className="font-semibold mb-2">
             {actionType === 'reserved' ? 'Scan to Reserve' : 'Scan to Dispatch'}
           </h3>
-          <Scanner
-            onScan={handleScan}
-            onError={console.error}
-            formats={['qr_code']}
-          />
+          <Scanner onScan={handleScan} onError={console.error} formats={['qr_code']} />
           <p className="mt-2 text-sm">{scannedBags.length} scanned bag(s)</p>
         </div>
       )}
 
-      {/* Grouped scan results */}
-      {actionType && scannedBags.length > 0 && (
-        <div className="space-y-3">
-          {groups.map(g => (
-            <div
-              key={g.key}
-              className="border border-gray-300 dark:border-gray-600 p-3 rounded bg-gray-50 dark:bg-gray-700"
-            >
-              <div>
-                <strong>Room:</strong> {getName(initialHarvestRooms, g.harvest_room_id)}
+      {/* Step 3: Group list */}
+      {actionType && groups.map(g => {
+        const isOpen = expandedGroups[g.group_id] ?? false;
+        const sample = g.bags[0];
+        const strainName = getName(initialStrains, sample.strain_id);
+        const sizeName = getName(initialBagSizes, sample.size_category_id);
+        const roomName = getName(initialHarvestRooms, sample.harvest_room_id);
+
+        return (
+          <div key={g.group_id} className="border rounded bg-white dark:bg-gray-800">
+            <div className="flex items-center justify-between p-4">
+              <div onClick={() => toggleGroup(g.group_id)} className="flex-1 flex items-center cursor-pointer">
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-gray-100">
+                    {strainName} — {sizeName}
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {g.bags.length} bag{g.bags.length>1?'s':''}
+                  </p>
+                </div>
+                <div className="ml-auto text-gray-500">
+                  {isOpen ? <FaChevronUp /> : <FaChevronDown />}  
+                </div>
               </div>
-              <div>
-                <strong>Strain:</strong> {getName(initialStrains, g.strain_id)}
-              </div>
-              <div>
-                <strong>Size:</strong> {getName(initialBagSizes, g.size_category_id)}
-              </div>
-              <div>
-                <strong>Weight:</strong> {g.weight} lbs
-              </div>
-              <div>
-                <strong>Count:</strong> {g.bags.length}
+              <div className="flex gap-2">
+                <button onClick={() => addGroup(g.group_id)} disabled={processing} className="p-1 bg-gray-500 rounded disabled:opacity-50">
+                  <FaPlus />
+                </button>
+                <button onClick={() => removeGroup(g.group_id)} className="p-1 bg-red-500 rounded">
+                  <FaTrash />
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+            {isOpen && (
+              <div className="p-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead><tr className="bg-gray-100 dark:bg-gray-700">
+                    <th className="border px-2 py-1">ID</th>
+                    <th className="border px-2 py-1">Room</th>
+                    <th className="border px-2 py-1">Weight</th>
+                    <th className="border px-2 py-1">Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {g.bags.map(b => (
+                      <tr key={b.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-2 py-1 text-gray-800 dark:text-gray-200">{b.id}</td>
+                        <td className="px-2 py-1">{roomName}</td>
+                        <td className="px-2 py-1">{b.weight.toFixed(2)}</td>
+                        <td className="px-2 py-1">{b.current_status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
-      {/* STEP 3: Action-specific form */}
+      {/* Step 4: Form */}
       {actionType && (
-        <div className="border border-gray-300 dark:border-gray-600 p-4 rounded bg-white dark:bg-gray-800 space-y-4">
-          {actionType === 'reserved' ? (
+        <div className="border p-4 rounded bg-white dark:bg-gray-800 space-y-4">
+          {actionType==='reserved'?
             <label className="block">
-              <span className="font-semibold text-gray-800 dark:text-gray-200">Reserve For</span>
-              <input
-                type="text"
-                value={reservedFor}
-                onChange={e => setReservedFor(e.target.value)}
-                className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                placeholder="Customer or Department"
-              />
+              <span>Reserve For</span>
+              <input value={reservedFor} onChange={e=>setReservedFor(e.target.value)} placeholder="Customer or Dept"
+                     className="mt-1 w-full p-2 border rounded" />
             </label>
-          ) : (
+          :
             <>
-              <label className="block">
-                <span className="font-semibold text-gray-800 dark:text-gray-200">Delivered By</span>
-                <input
-                  type="text"
-                  value={deliveredBy}
-                  onChange={e => setDeliveredBy(e.target.value)}
-                  className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                  placeholder="Employee Name"
-                />
+              <label className="block"><span>Delivered By</span>
+                <input value={deliveredBy} onChange={e=>setDeliveredBy(e.target.value)} placeholder="Employee"
+                       className="mt-1 w-full p-2 border rounded" />
               </label>
-              <label className="block">
-                <span className="font-semibold text-gray-800 dark:text-gray-200">Delivered To</span>
-                <input
-                  type="text"
-                  value={deliveredTo}
-                  onChange={e => setDeliveredTo(e.target.value)}
-                  className="mt-1 w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                  placeholder="Customer or Department"
-                />
+              <label className="block"><span>Delivered To</span>
+                <input value={deliveredTo} onChange={e=>setDeliveredTo(e.target.value)} placeholder="Customer or Dept"
+                       className="mt-1 w-full p-2 border rounded" />
               </label>
             </>
-          )}
-          <button
-            onClick={submitAction}
-            disabled={processing || scannedBags.length === 0}
-            className="w-full py-2 bg-blue-600 dark:bg-blue-700 text-white rounded disabled:opacity-50 hover:bg-blue-700 dark:hover:bg-blue-800"
-          >
-            {processing
-              ? 'Saving…'
-              : actionType === 'reserved'
-              ? 'Confirm Reservation'
-              : 'Confirm Delivery'}
+          }
+          <button onClick={submitAction} disabled={processing||!scannedBags.length}
+                  className="w-full py-2 bg-blue-600 text-white rounded disabled:opacity-50">
+            {processing?'Saving…':actionType==='reserved'?'Confirm Reservation':'Confirm Delivery'}
           </button>
         </div>
       )}

@@ -1,10 +1,12 @@
+// components/bag-entry-form/BagEntryForm.tsx
 'use client';
 
 import React, { useState } from 'react';
 import { supabase } from '@/utils/supabase/supabaseclient';
 import BagInsertForm from './BagInsertForm';
 import InsertedGroupsList from './InsertedGroupsList';
-import { Strain, BagSize, HarvestRoom, InsertedGroup, BagRecord } from './types';
+import BulkEditForm from './BulkEditForm';
+import type { Strain, BagSize, HarvestRoom, BagRecord } from './types';
 
 interface BagEntryFormProps {
   serverStrains: Strain[];
@@ -25,101 +27,113 @@ export default function BagEntryForm({
 }: BagEntryFormProps) {
   const [messages, setMessages] = useState<{ type: 'error' | 'success'; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
-  const [allGroups, setAllGroups] = useState<InsertedGroup[]>([]);
-  const [bulkEditMode, setBulkEditMode] = useState(false);
-  const [bulkEditGroupId, setBulkEditGroupId] = useState<string | null>(null);
+  const [insertedBags, setInsertedBags] = useState<BagRecord[]>([]);
+  const [bulkEditKey, setBulkEditKey] = useState<string | null>(null);
 
-  const reversedRooms = [...serverHarvestRooms].reverse();
+  // Build a grouping key from the fields you care about
+  function groupKey(b: BagRecord) {
+    return [
+      b.harvest_room_id ?? 'none',
+      b.strain_id ?? 'none',
+      b.size_category_id ?? 'none',
+      b.weight.toFixed(2),
+    ].join('_');
+  }
 
-  async function insertNewGroup(newBagsData: Omit<BagRecord, 'id'>[]) {
+  // 1) Insert a new batch of bags
+  async function handleInsert(newBags: Omit<BagRecord, 'id' | 'group_id'>[]) {
     setLoading(true);
     setMessages([]);
-
     try {
-      // 1) Insert into Supabase
-      const { data: insertedRows, error: insertErr } = await supabase
+      const { data: rows, error } = await supabase
         .from('bags')
-        .insert(newBagsData)
+        .insert(newBags)
         .select();
+      if (error) throw error;
+      if (!rows || rows.length === 0) throw new Error('No rows returned');
 
-      if (insertErr) {
-        console.error('Error inserting bags:', insertErr);
-        setMessages([{ type: 'error', text: 'Failed to insert bags.' }]);
-        return;
-      }
-      if (!insertedRows || insertedRows.length === 0) {
-        setMessages([{ type: 'error', text: 'No bags inserted.' }]);
-        return;
-      }
-
-      // 2) Success message
-      setMessages([{ type: 'success', text: `${insertedRows.length} bag(s) inserted.` }]);
-
-      // 3) Add to UI group list
-      const newGroup: InsertedGroup = {
-        groupId:   `group-${Date.now()}`,
-        bags:       insertedRows,
-        bagCount:   insertedRows.length,
-        insertedAt: new Date().toLocaleString(),
-        bagIds:     insertedRows.map((b) => b.id),
-        qrCodes:    insertedRows.map((b) => b.qr_code ?? ''),
-      };
-      setAllGroups((prev) => [...prev, newGroup]);
-    } catch (err) {
-      console.error('Unexpected error in insertNewGroup:', err);
-      setMessages([{ type: 'error', text: 'Unexpected error occurred.' }]);
+      setInsertedBags(prev => [...rows, ...prev]);
+      setMessages([{ type: 'success', text: `Inserted ${rows.length} bag(s).` }]);
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Insert failed';
+      setMessages([{ type: 'error', text: msg }]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function applyBulkEdit(updateFields: Partial<BagRecord>) {
-    if (!bulkEditGroupId) return;
+  // 2) Delete an entire group
+  async function handleDeleteGroup(key: string) {
+    setLoading(true);
+    setMessages([]);
+    const ids = insertedBags.filter(b => groupKey(b) === key).map(b => b.id);
+    try {
+      const { error } = await supabase
+        .from('bags')
+        .delete()
+        .in('id', ids);
+      if (error) throw error;
+
+      setInsertedBags(prev => prev.filter(b => !ids.includes(b.id)));
+      setMessages([{ type: 'success', text: `Deleted ${ids.length} bag(s).` }]);
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      setMessages([{ type: 'error', text: msg }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 3) Bulk-edit: enter & exit
+  function handleStartBulkEdit(key: string) {
+    setBulkEditKey(key);
+    setMessages([{ type: 'success', text: 'Bulk-edit mode enabled.' }]);
+  }
+  function handleCancelBulkEdit() {
+    setBulkEditKey(null);
+  }
+
+  // 4) Bulk-edit: apply changes
+  async function handleApplyBulkEdit(fields: Partial<BagRecord>) {
+    if (!bulkEditKey) return;
     setLoading(true);
     setMessages([]);
 
-    const group = allGroups.find((g) => g.groupId === bulkEditGroupId);
-    if (!group) {
-      setMessages([{ type: 'error', text: 'Group not found.' }]);
-      setLoading(false);
-      return;
-    }
+    const ids = insertedBags
+      .filter(b => groupKey(b) === bulkEditKey)
+      .map(b => b.id);
 
     try {
       const { error } = await supabase
         .from('bags')
-        .update(updateFields)
-        .in('id', group.bagIds.filter((id): id is string => !!id));
+        .update(fields)
+        .in('id', ids);
+      if (error) throw error;
 
-      if (error) {
-        console.error('Error applying bulk edit:', error);
-        setMessages([{ type: 'error', text: 'Failed to apply bulk edit.' }]);
-      } else {
-        setMessages([{ type: 'success', text: 'Bulk edit applied successfully!' }]);
-      }
-    } catch (e) {
-      console.error('Unexpected bulk-edit error:', e);
-      setMessages([{ type: 'error', text: 'Unexpected error during bulk edit.' }]);
+      // Optimistically update local state
+      setInsertedBags(prev =>
+        prev.map(b =>
+          ids.includes(b.id)
+            ? { ...b, ...fields, updated_at: new Date().toISOString() }
+            : b
+        )
+      );
+      setMessages([{ type: 'success', text: 'Bulk edit applied.' }]);
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Bulk edit failed';
+      setMessages([{ type: 'error', text: msg }]);
     } finally {
       setLoading(false);
-      setBulkEditMode(false);
-      setBulkEditGroupId(null);
+      setBulkEditKey(null);
     }
   }
 
-  function startBulkEdit(groupId: string) {
-    setBulkEditGroupId(groupId);
-    setBulkEditMode(true);
-    setMessages([{ type: 'success', text: 'Bulk-edit mode enabled.' }]);
-  }
-
-  function cancelBulkEdit() {
-    setBulkEditMode(false);
-    setBulkEditGroupId(null);
-  }
-
   return (
-    <div>
+    <div className="space-y-6">
+      {/* Insert Form */}
       <BagInsertForm
         serverStrains={serverStrains}
         serverBagSizes={serverBagSizes}
@@ -128,31 +142,57 @@ export default function BagEntryForm({
         employeeId={employeeId}
         tenantId={tenantId}
         loading={loading}
-        onInsertNewGroup={insertNewGroup}
+        onInsertNewGroup={handleInsert}
       />
 
+      {/* List of Inserted Groups */}
       <InsertedGroupsList
-        allGroups={allGroups}
-        loading={loading}
-        bulkEditMode={bulkEditMode}
-        bulkEditGroupId={bulkEditGroupId}
-        onStartBulkEdit={startBulkEdit}
-        onCancelBulkEdit={cancelBulkEdit}
-        onApplyBulkEdit={applyBulkEdit}
-        reversedRooms={reversedRooms}
-        serverHarvestRooms={serverHarvestRooms}
+        bags={insertedBags}
         serverStrains={serverStrains}
         serverBagSizes={serverBagSizes}
+        serverHarvestRooms={serverHarvestRooms}
+        onEditGroup={handleStartBulkEdit}
+        onDeleteGroup={handleDeleteGroup}
       />
 
-      {messages.map((msg, idx) => (
+      {/* Bulk-Edit Modal */}
+      {bulkEditKey && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md mx-auto shadow-lg">
+            {/* Seed initialData from first bag in group */}
+            {(() => {
+              const groupBags = insertedBags.filter(b => groupKey(b) === bulkEditKey);
+              if (!groupBags.length) return null;
+              const first = groupBags[0];
+              const initial = {
+                harvest_room_id:  first.harvest_room_id ?? undefined,
+                strain_id:        first.strain_id ?? undefined,
+                size_category_id: first.size_category_id ?? undefined,
+                weight:           first.weight,
+              };
+              return (
+                <BulkEditForm
+                  initialData={initial}
+                  loading={loading}
+                  onCancel={handleCancelBulkEdit}
+                  onApplyBulkEdit={handleApplyBulkEdit}
+                  reversedRooms={[...serverHarvestRooms].reverse()}
+                  serverStrains={serverStrains}
+                  serverBagSizes={serverBagSizes}
+                />
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Messages */}
+      {messages.map((m, i) => (
         <p
-          key={idx}
-          className={`mt-2 text-center text-sm ${
-            msg.type === 'error' ? 'text-red-600' : 'text-green-600'
-          }`}
+          key={i}
+          className={`text-center text-sm ${m.type === 'error' ? 'text-red-600' : 'text-green-600'}`}
         >
-          {msg.text}
+          {m.text}
         </p>
       ))}
     </div>

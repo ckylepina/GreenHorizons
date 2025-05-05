@@ -1,10 +1,12 @@
-// /src/types/dashboard.ts
+// src/types/dashboard.ts
 
+/** The signed-in user */
 export interface User {
   id: string;
   email: string | null;
 }
 
+/** Profile info for a user */
 export interface Profile {
   id: string;
   first_name: string;
@@ -12,6 +14,7 @@ export interface Profile {
   email: string;
 }
 
+/** Employee record linked to a profile */
 export interface Employee {
   id: string;
   created_at: string;
@@ -23,11 +26,13 @@ export interface Employee {
   role_id?: string;
 }
 
+/** (If you ever need it) */
 export interface Seller {
   id: string;
   name: string;
 }
 
+/** A request to change role */
 export interface RoleRequest {
   id: string;
   status: string;
@@ -36,11 +41,13 @@ export interface RoleRequest {
   roles: { id: string; name: string }[];
 }
 
+/** Tenant (organization) info */
 export interface Tenant {
   id: string;
   name: string;
 }
 
+/** Raw sale row from the DB */
 export interface SalesData {
   id: string;
   tenant_id: string;
@@ -58,8 +65,34 @@ export interface SalesData {
   };
 }
 
-// Unified type for dashboards
+/** Transformed for charts / dashboards (e.g. inventory-style) */
 export interface DashboardSalesData extends SalesData {
   date: string;
   total: number;
+}
+
+/**
+ * CEO’s view: augments SalesData with forecast/inflow/outflow fields
+ */
+export interface SalesRecord extends SalesData {
+  date:           string;
+  actual:         number;
+  forecast:       number;
+  inflow:         number;
+  outflow:        number;
+  otherFinancial: number;
+}
+
+/**
+ * A single “bag group” summary (bags collapsed by group_id)
+ */
+export interface BagGroupSummary {
+  group_id:         string;
+  created_at:       string;
+  bag_count:        number;
+  total_weight:     number;
+  strain_id:        string;
+  size_category_id: string;
+  harvest_room_id:  string;
+  count: number;
 }

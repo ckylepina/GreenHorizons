@@ -3,21 +3,10 @@
 import React, { useState } from 'react';
 import { FaChevronDown, FaChevronUp, FaQrcode, FaEdit, FaTruck, FaTimes } from 'react-icons/fa';
 import { useQRCode } from 'next-qrcode';
-
+import { DeliveredBag } from './DeliveriesSummary';
 /**
  * The shape of each delivered‐bag record, joined with names:
  */
-export interface DeliveredBag {
-  id:                 string;
-  qr_code:           string;
-  delivery_person:    string;
-  delivery_recipient: string;
-  updated_at:         string;
-  weight:             number;
-  harvest_room:       { name: string }[];
-  strain:             { name: string }[];
-  size:               { name: string }[];
-}
 
 export interface GroupedDelivery {
   key:            string;

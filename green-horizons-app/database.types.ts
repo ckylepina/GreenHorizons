@@ -110,9 +110,10 @@ export type Database = {
           delivery_person: string | null
           delivery_recipient: string | null
           employee_id: string | null
+          group_id: string
           harvest_room_id: string | null
           id: string
-          qr_code: string
+          qr_code: string | null
           reserved_for: string | null
           size_category_id: string
           strain_id: string | null
@@ -127,9 +128,10 @@ export type Database = {
           delivery_person?: string | null
           delivery_recipient?: string | null
           employee_id?: string | null
+          group_id?: string
           harvest_room_id?: string | null
           id?: string
-          qr_code: string
+          qr_code?: string | null
           reserved_for?: string | null
           size_category_id: string
           strain_id?: string | null
@@ -144,9 +146,10 @@ export type Database = {
           delivery_person?: string | null
           delivery_recipient?: string | null
           employee_id?: string | null
+          group_id?: string
           harvest_room_id?: string | null
           id?: string
-          qr_code?: string
+          qr_code?: string | null
           reserved_for?: string | null
           size_category_id?: string
           strain_id?: string | null
@@ -853,7 +856,18 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      bag_group_summary: {
+        Row: {
+          bag_count: number | null
+          created_at: string | null
+          group_id: string | null
+          harvest_room_id: string | null
+          size_category_id: string | null
+          strain_id: string | null
+          total_weight: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       accept_role_request: {

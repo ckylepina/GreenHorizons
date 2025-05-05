@@ -12,7 +12,7 @@ interface BagInsertFormProps {
   employeeId: string;
   tenantId: string;
   loading: boolean;
-  onInsertNewGroup: (bags: Omit<BagRecord, 'id'>[]) => Promise<void>;
+  onInsertNewGroup: (bags: Omit<BagRecord, 'id' | 'group_id'>[]) => Promise<void>;
 }
 
 export default function BagInsertForm({
@@ -125,7 +125,7 @@ export default function BagInsertForm({
 
     const now = new Date().toISOString();
 
-    const newBagsData: Omit<BagRecord, 'id'>[] = Array.from(
+    const newBagsData: Omit<BagRecord, 'id' | 'group_id'>[] = Array.from(
       { length: count },
       () => ({
         strain_id,
