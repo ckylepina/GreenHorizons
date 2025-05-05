@@ -95,4 +95,4 @@ export interface BagGroupSummary {
   size_category_id: string;
   harvest_room_id:  string;
   count: number;
-}
+} 
