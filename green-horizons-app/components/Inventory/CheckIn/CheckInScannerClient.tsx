@@ -25,7 +25,7 @@ export default function CheckInScannerClient() {
       const { data: bag, error: fetchErr } = await supabase
         .from('bags')
         .select('id, current_status')
-        .eq('qr_code', rawValue)
+        .eq('id', rawValue)
         .maybeSingle();
 
       if (fetchErr || !bag) {

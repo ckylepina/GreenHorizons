@@ -88,7 +88,7 @@ export const DeliveriesGroup: React.FC<DeliveriesGroupProps> = ({
                     </td>
                     <td className="border px-2 py-1 text-center">
                       <button
-                        onClick={() => openQr(bag.qr_code)}
+                        onClick={() => openQr(bag.id)}
                         className="text-blue-600 hover:text-blue-800"
                         title="View QR Code"
                       >

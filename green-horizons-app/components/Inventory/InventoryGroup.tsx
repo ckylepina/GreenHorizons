@@ -96,7 +96,7 @@ export const InventoryGroup: React.FC<InventoryGroupProps> = ({
                     </td>
                     <td className="px-2 py-1 text-center">
                       <button
-                        onClick={() => openQrModal(bag.qr_code ?? '')}
+                        onClick={() => openQrModal(bag.id)}
                         className="text-blue-600 hover:text-blue-800"
                         title="View QR Code"
                       >

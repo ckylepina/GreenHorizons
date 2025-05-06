@@ -175,7 +175,7 @@ export default async function HomePage() {
     });
 
     // lookups
-    const inventoryBags = await getMyBags(supabase, employee.id);
+    const inventoryBags = await getCurrentInventory(supabase);
     const strains = await getStrains(supabase);
     const bagSizes = await getBagSizeCategories(supabase);
     const harvestRooms = await getHarvestRooms(supabase);

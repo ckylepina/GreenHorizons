@@ -88,7 +88,7 @@ const BagScannerSection: React.FC<BagScannerSectionProps> = ({
     const { data, error } = await supabase
       .from('bags')
       .select('*')
-      .eq('qr_code', qrValue)
+      .eq('id', qrValue)
       .single();
     if (error) {
       alert('Bag not found for QR code: ' + qrValue);

@@ -65,7 +65,7 @@ export default function ReserveBagScanClient({
       const { data, error } = await supabase
         .from('bags')
         .select('*')
-        .eq('qr_code', rawValue)
+        .eq('id', rawValue)
         .eq('current_status', 'in_inventory')
         .single();
       if (!error && data) setScannedBags(prev => prev.some(b => b.id === data.id) ? prev : [...prev, data]);

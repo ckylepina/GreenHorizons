@@ -101,9 +101,7 @@ export const ReservationsGroup: React.FC<ReservationsGroupProps> = ({ group }) =
                     */}
                     <td className="px-2 py-1 text-center">
                       <button
-                        onClick={() =>
-                          setQrModal({ open: true, text: bag.qr_code })
-                        }
+                        onClick={() => setQrModal({ open: true, text: bag.id })}
                         className="text-blue-600 hover:text-blue-800"
                         title="View QR Code"
                       >

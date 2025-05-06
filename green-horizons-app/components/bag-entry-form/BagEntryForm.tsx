@@ -40,39 +40,62 @@ export default function BagEntryForm({
     ].join('_');
   }
 
-  // 1) Insert a new batch of bags
+  // 1) Insert a new batch of bags, sharing a single Postgres-generated group_id
   async function handleInsert(newBags: Omit<BagRecord, 'id' | 'group_id'>[]) {
+    if (newBags.length === 0) return;
+  
     setLoading(true);
     setMessages([]);
+  
     try {
-      const { data: rows, error } = await supabase
+      // Insert the first bag alone and select '*' so Supabase infers the row type
+      const { data: firstRow, error: firstError } = await supabase
         .from('bags')
-        .insert(newBags)
-        .select();
-      if (error) throw error;
-      if (!rows || rows.length === 0) throw new Error('No rows returned');
-
-      setInsertedBags(prev => [...rows, ...prev]);
-      setMessages([{ type: 'success', text: `Inserted ${rows.length} bag(s).` }]);
+        .insert([newBags[0]])
+        .select('*')
+        .single();
+  
+      if (firstError || !firstRow) {
+        throw firstError ?? new Error('Failed to generate group_id');
+      }
+  
+      const groupId = firstRow.group_id as string;  // narrow from possibly null
+  
+      // Bulk insert the rest with that group_id
+      const rest = newBags.slice(1).map(b => ({ ...b, group_id: groupId }));
+      const { data: restRows, error: restError } = await supabase
+        .from('bags')
+        .insert(rest)
+        .select('*');
+  
+      if (restError) throw restError;
+  
+      // Combine them; Supabase returns rows matching your DB
+      const allInserted = [firstRow, ...(restRows ?? [])] as BagRecord[];
+  
+      setInsertedBags(prev => [...allInserted, ...prev]);
+      setMessages([{ type: 'success', text: `Inserted ${allInserted.length} bag(s) in group ${groupId}.` }]);
     } catch (err: unknown) {
       console.error(err);
-      const msg = err instanceof Error ? err.message : 'Insert failed';
-      setMessages([{ type: 'error', text: msg }]);
+      const message = err instanceof Error ? err.message : 'Insert failed';
+      setMessages([{ type: 'error', text: message }]);
     } finally {
       setLoading(false);
     }
-  }
-
+  }  
+  
   // 2) Delete an entire group
   async function handleDeleteGroup(key: string) {
     setLoading(true);
     setMessages([]);
+
     const ids = insertedBags.filter(b => groupKey(b) === key).map(b => b.id);
     try {
       const { error } = await supabase
         .from('bags')
         .delete()
         .in('id', ids);
+
       if (error) throw error;
 
       setInsertedBags(prev => prev.filter(b => !ids.includes(b.id)));
@@ -110,9 +133,9 @@ export default function BagEntryForm({
         .from('bags')
         .update(fields)
         .in('id', ids);
+
       if (error) throw error;
 
-      // Optimistically update local state
       setInsertedBags(prev =>
         prev.map(b =>
           ids.includes(b.id)
@@ -159,7 +182,6 @@ export default function BagEntryForm({
       {bulkEditKey && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md mx-auto shadow-lg">
-            {/* Seed initialData from first bag in group */}
             {(() => {
               const groupBags = insertedBags.filter(b => groupKey(b) === bulkEditKey);
               if (!groupBags.length) return null;

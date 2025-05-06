@@ -159,7 +159,7 @@ export default function AdminDashboardComponent({
           {/* New Recently Added Batches Panel */}
           <section className="mb-8">
             <h2 className="text-xl md:text-2xl font-semibold mb-2">
-              Recently Added
+              Recently Added Groups
             </h2>
             <RecentBagGroupsPanel
               groups={recentBagGroups}

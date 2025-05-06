@@ -5,6 +5,7 @@ import { useQRCode } from 'next-qrcode';
 import { BagRecord, Strain, BagSize, HarvestRoom } from './types';
 
 interface LabelsToPrintProps {
+  groupKey: string;
   bags?: BagRecord[];
   serverStrains?: Strain[];
   serverBagSizes?: BagSize[];
@@ -12,12 +13,15 @@ interface LabelsToPrintProps {
 }
 
 export default function LabelsToPrint({
+  groupKey,
   bags = [],
   serverStrains = [],
   serverBagSizes = [],
   serverHarvestRooms = [],
 }: LabelsToPrintProps) {
   const { Image: QRImage } = useQRCode();
+  // Shortened group id (first segment, 8 chars)
+  const shortKey = groupKey.split('_')[0].slice(0, 8);
 
   const getStrainName = (id?: string | null) =>
     serverStrains.find((s) => s.id === id)?.name || 'Unknown';
@@ -68,7 +72,7 @@ export default function LabelsToPrint({
               border: '1px solid #000', // Screen preview only
             }}
           >
-            {/* Left side: Information */}
+            {/* Left side: Information including harvest and group id */}
             <div
               style={{
                 flex: 1,
@@ -82,7 +86,9 @@ export default function LabelsToPrint({
                 paddingRight: '0.05in',
               }}
             >
-              <div>H{getHarvestRoomName(bag.harvest_room_id)}</div>
+              <div>
+                H{getHarvestRoomName(bag.harvest_room_id)} - {shortKey}
+              </div>
               <div>{getStrainName(bag.strain_id)}</div>
               <div>{getBagSizeName(bag.size_category_id)}</div>
               <div>
@@ -93,7 +99,7 @@ export default function LabelsToPrint({
               </div>
             </div>
 
-            {/* Right side: QR Code (only the bag ID) */}
+            {/* Right side: QR Code */}
             <div
               style={{
                 position: 'relative',

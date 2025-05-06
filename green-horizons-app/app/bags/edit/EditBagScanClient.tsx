@@ -70,7 +70,7 @@ export default function EditBagScanClient({
     const { data, error } = await supabase
       .from('bags')
       .select('*')
-      .eq('qr_code', qrValue)
+      .eq('id', qrValue)
       .eq('current_status', 'in_inventory')
       .single();
 
@@ -354,6 +354,7 @@ export default function EditBagScanClient({
           {/* Printable labels */}
           <div id={`printable-area-${group.key}`} className="hidden">
             <LabelsToPrint
+              groupKey={group.key}
               bags={group.bags}
               serverStrains={initialStrains}
               serverBagSizes={initialBagSizes}

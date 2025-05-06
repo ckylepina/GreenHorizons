@@ -146,6 +146,7 @@ export default function InsertedGroup({
           {/* Hidden printable HTML */}
           <div ref={printableRef} className="space-y-2">
             <LabelsToPrint
+              groupKey={group.key}
               bags={group.bags}
               serverStrains={serverStrains}
               serverBagSizes={serverBagSizes}
